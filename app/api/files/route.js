@@ -24,7 +24,7 @@ export async function GET(request) {
 
     // Base query with subject name join
     let query = `
-      SELECT
+      SELECT DISTINCT
         f.id,
         f.drive_file_id,
         f.drive_url,
@@ -37,19 +37,24 @@ export async function GET(request) {
         s.name AS subject
       FROM lms_files f
       LEFT JOIN subjects s ON f.subject_id = s.id
+      LEFT JOIN file_access fa ON f.id = fa.file_id
     `;
 
     const conditions = [];
     const params = [];
 
-    // Person-wise filter — join file_access
+    // Person-wise filter — matches files uploaded by or shared with this email
     if (userEmail) {
-      query += ` INNER JOIN file_access fa ON f.id = fa.file_id AND fa.user_email = ?`;
-      params.push(userEmail);
+      conditions.push("(LOWER(f.uploaded_by) = ? OR LOWER(fa.user_email) = ?)");
+      params.push(userEmail.toLowerCase(), userEmail.toLowerCase());
     }
 
-    if (category)  { conditions.push("f.category = ?");  params.push(category); }
-    if (type)      { conditions.push("f.type = ?");       params.push(type); }
+    if (category === "Others" || type === "Other") {
+      conditions.push("(f.category = 'Others' OR f.type = 'Other')");
+    } else {
+      if (category)  { conditions.push("f.category = ?");  params.push(category); }
+      if (type)      { conditions.push("f.type = ?");       params.push(type); }
+    }
     if (subject)   { conditions.push("s.name = ?");       params.push(subject); }
     if (search)    { conditions.push("f.name LIKE ?");    params.push(`%${search}%`); }
 

@@ -3,9 +3,18 @@
 -- Run this against your `cncs_lms` MySQL database
 -- ============================================================
 
--- 1. Subjects (dynamic — can add new ones from the UI)
+-- 1. Users table for friends login
+CREATE TABLE IF NOT EXISTS users (
+  id            INT PRIMARY KEY AUTO_INCREMENT,
+  name          VARCHAR(100) NOT NULL,
+  email         VARCHAR(150) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. Subjects (dynamic — can add new ones from the UI)
 CREATE TABLE IF NOT EXISTS subjects (
-  id         INT AUTO_INCREMENT PRIMARY KEY,
+  id         INT PRIMARY KEY AUTO_INCREMENT,
   name       VARCHAR(100) NOT NULL UNIQUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -19,24 +28,22 @@ INSERT IGNORE INTO subjects (name) VALUES
   ('Database'),
   ('Operating Systems');
 
--- 2. Core files table
---    category: top-level Drive folder  (Documents | Videos | Images | Assignments | Others)
---    type:     sub-folder under Docs   (PDF | Word | PowerPoint | Excel | Video | Image | Assignment | Other)
+-- 3. Core files table
 CREATE TABLE IF NOT EXISTS lms_files (
-  id            INT AUTO_INCREMENT PRIMARY KEY,
+  id            INT PRIMARY KEY AUTO_INCREMENT,
   drive_file_id VARCHAR(255)  NOT NULL,
   drive_url     VARCHAR(512),
   name          VARCHAR(255)  NOT NULL,
   category      ENUM('Documents','Videos','Images','Assignments','Others') NOT NULL,
   type          ENUM('PDF','Word','PowerPoint','Excel','Video','Image','Assignment','Other') NOT NULL,
   subject_id    INT,
-  uploaded_by   VARCHAR(255),          -- Google email of uploader
+  uploaded_by   VARCHAR(255),          -- Email of uploader
   size_bytes    BIGINT DEFAULT 0,
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE SET NULL
 );
 
--- 3. Person-wise access — teacher assigns files to specific students
+-- 4. Person-wise access
 CREATE TABLE IF NOT EXISTS file_access (
   file_id    INT          NOT NULL,
   user_email VARCHAR(255) NOT NULL,
