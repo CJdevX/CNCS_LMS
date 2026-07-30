@@ -83,37 +83,114 @@ function formatDate(iso: string): string {
 }
 
 // ── File Card ─────────────────────────────────────────────────────────────────
-function FileCard({ file }: { file: LMSFile }) {
+function FileCard({
+  file,
+  currentUser,
+  onDeleteSuccess,
+}: {
+  file: LMSFile;
+  currentUser: LMSUser | null;
+  onDeleteSuccess?: () => void;
+}) {
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const style = TYPE_COLORS[file.type] || TYPE_COLORS.Other;
+
+  const isOwner =
+    currentUser &&
+    file.uploaded_by &&
+    file.uploaded_by.trim().toLowerCase() === currentUser.email.trim().toLowerCase();
+
+  async function handleDelete(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const confirmDelete = window.confirm(`Are you sure you want to delete "${file.name}"?`);
+    if (!confirmDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/files?id=${file.id}`, { method: "DELETE" });
+      const data = await res.json();
+      setIsDeleting(false);
+
+      if (data.success) {
+        if (onDeleteSuccess) onDeleteSuccess();
+      } else {
+        alert(data.error || "Failed to delete file.");
+      }
+    } catch (err: unknown) {
+      setIsDeleting(false);
+      alert(err instanceof Error ? err.message : "Error deleting file.");
+    }
+  }
+
   return (
-    <a
-      href={file.drive_url}
-      target="_blank"
-      rel="noopener noreferrer"
+    <div
       className="file-card"
+      style={{
+        opacity: isDeleting ? 0.5 : 1,
+        pointerEvents: isDeleting ? "none" : "auto",
+      }}
     >
-      <div className="file-card-icon" style={{ background: style.bg }}>
-        <span>{style.icon}</span>
-      </div>
-      <div className="file-card-body">
-        <p className="file-name">{file.name}</p>
-        <div className="file-meta">
-          <span className="badge" style={{ background: style.bg, color: style.text }}>
-            {file.type}
-          </span>
-          {file.subject && (
-            <span className="badge subject-badge">{file.subject}</span>
-          )}
-          {file.size_bytes > 0 && (
-            <span className="file-size">{formatBytes(file.size_bytes)}</span>
-          )}
+      <a
+        href={file.drive_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "14px",
+          textDecoration: "none",
+          color: "inherit",
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        <div className="file-card-icon" style={{ background: style.bg }}>
+          <span>{style.icon}</span>
         </div>
-        <p className="file-uploader">
-          Uploaded on {formatDate(file.created_at)}
-        </p>
+        <div className="file-card-body">
+          <p className="file-name">{file.name}</p>
+          <div className="file-meta">
+            <span className="badge" style={{ background: style.bg, color: style.text }}>
+              {file.type}
+            </span>
+            {file.subject && (
+              <span className="badge subject-badge">{file.subject}</span>
+            )}
+            {file.size_bytes > 0 && (
+              <span className="file-size">{formatBytes(file.size_bytes)}</span>
+            )}
+          </div>
+          <p className="file-uploader">
+            Uploaded on {formatDate(file.created_at)}
+          </p>
+        </div>
+      </a>
+
+      <div className="file-card-actions">
+        {isOwner && (
+          <button
+            type="button"
+            className="btn-delete-file"
+            title="Delete file"
+            onClick={handleDelete}
+            disabled={isDeleting}
+          >
+            {isDeleting ? "⏳" : "🗑️"}
+          </button>
+        )}
+        <a
+          href={file.drive_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="file-card-arrow"
+          style={{ textDecoration: "none" }}
+        >
+          ↗
+        </a>
       </div>
-      <div className="file-card-arrow">↗</div>
-    </a>
+    </div>
   );
 }
 
@@ -406,7 +483,17 @@ export default function UserDashboard() {
                 <>
                   <p className="results-count">{files.length} file{files.length !== 1 ? "s" : ""} in this category</p>
                   <div className="file-grid">
-                    {files.map((f) => <FileCard key={f.id} file={f} />)}
+                    {files.map((f) => (
+                      <FileCard
+                        key={f.id}
+                        file={f}
+                        currentUser={currentUser}
+                        onDeleteSuccess={() => {
+                          if (currentUser) loadAllUserFiles(currentUser.email);
+                          loadFilteredUserFiles();
+                        }}
+                      />
+                    ))}
                   </div>
                 </>
               )}
