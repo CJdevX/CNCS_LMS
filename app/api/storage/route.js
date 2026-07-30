@@ -12,13 +12,22 @@ export async function GET() {
     const usageBytes  = parseInt(storageQuota.usage || "0", 10);
     const driveBytes  = parseInt(storageQuota.usageInDrive || "0", 10);
 
-    // 2. Fetch database LMS aggregate
-    const [lmsTotals] = await db.execute(
-      "SELECT COUNT(*) AS total_files, COALESCE(SUM(size_bytes), 0) AS total_lms_bytes FROM lms_files"
-    );
+    // 2. Fetch database LMS aggregate grouped by storage_type
+    const [lmsTotals] = await db.execute(`
+      SELECT 
+        COUNT(*) AS total_files, 
+        COALESCE(SUM(size_bytes), 0) AS total_lms_bytes,
+        COALESCE(SUM(CASE WHEN storage_type = 'GOOGLE_DRIVE' THEN size_bytes ELSE 0 END), 0) AS drive_lms_bytes,
+        COALESCE(SUM(CASE WHEN storage_type = 'YOUTUBE' THEN size_bytes ELSE 0 END), 0) AS youtube_lms_bytes,
+        COALESCE(SUM(CASE WHEN storage_type = 'YOUTUBE' THEN 1 ELSE 0 END), 0) AS youtube_file_count
+      FROM lms_files
+    `);
 
-    const totalFiles    = lmsTotals[0]?.total_files || 0;
-    const totalLmsBytes = parseInt(lmsTotals[0]?.total_lms_bytes || 0, 10);
+    const totalFiles       = lmsTotals[0]?.total_files || 0;
+    const totalLmsBytes    = parseInt(lmsTotals[0]?.total_lms_bytes || 0, 10);
+    const driveLmsBytes    = parseInt(lmsTotals[0]?.drive_lms_bytes || 0, 10);
+    const youtubeLmsBytes  = parseInt(lmsTotals[0]?.youtube_lms_bytes || 0, 10);
+    const youtubeFileCount = parseInt(lmsTotals[0]?.youtube_file_count || 0, 10);
 
     // 3. Fetch storage breakdown per user
     const [userBreakdown] = await db.execute(`
@@ -37,10 +46,13 @@ export async function GET() {
       success: true,
       quota: {
         limitBytes,
-        usageBytes: usageBytes > 0 ? usageBytes : totalLmsBytes,
-        driveBytes: driveBytes > 0 ? driveBytes : totalLmsBytes,
-        freeBytes: Math.max(0, limitBytes - (usageBytes > 0 ? usageBytes : totalLmsBytes)),
+        usageBytes: usageBytes > 0 ? usageBytes : driveLmsBytes,
+        driveBytes: driveBytes > 0 ? driveBytes : driveLmsBytes,
+        freeBytes: Math.max(0, limitBytes - (usageBytes > 0 ? usageBytes : driveLmsBytes)),
         lmsTotalBytes: totalLmsBytes,
+        driveLmsBytes,
+        youtubeLmsBytes,
+        youtubeFileCount,
         totalFiles,
         userEmail: driveInfo?.user?.emailAddress || "Google Drive Account",
       },

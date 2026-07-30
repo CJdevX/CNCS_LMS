@@ -1,4 +1,5 @@
 import drive, { resolveDrivePath, resolveFileCategory } from "@/lib/googleDrive";
+import { uploadVideo } from "@/services/youtube.service";
 import db from "@/lib/database";
 import { NextResponse } from "next/server";
 import { Readable } from "stream";
@@ -12,6 +13,7 @@ export async function POST(request) {
     const isAssign    = formData.get("isAssignment") === "true";
     const uploadedBy  = formData.get("uploadedBy") || "unknown";
     const sharedWith  = formData.get("sharedWith") || ""; // comma-separated emails
+    const storageType = formData.get("storageType") || "GOOGLE_DRIVE"; // GOOGLE_DRIVE or YOUTUBE
 
     // ── Validation ────────────────────────────────────────────────────────────
     if (!file) {
@@ -23,35 +25,10 @@ export async function POST(request) {
 
     const mimeType = file.type || "application/octet-stream";
     const { category, type } = resolveFileCategory(mimeType, isAssign);
-
-    // ── Step 1: Resolve Drive path (auto-creates folders if missing) ──────────
-    const targetFolderId = await resolveDrivePath(mimeType, isAssign, subject);
-
-    // ── Step 2: Upload file to Drive ─────────────────────────────────────────
+    const fileSize = file.size || 0;
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    const driveResponse = await drive.files.create({
-      requestBody: {
-        name: file.name,
-        parents: [targetFolderId],
-      },
-      media: {
-        mimeType,
-        body: Readable.from(buffer),
-      },
-      fields: "id, name, webViewLink, size",
-    });
-
-    const driveFile = driveResponse.data;
-
-    // Make file readable by anyone with the link
-    await drive.permissions.create({
-      fileId: driveFile.id,
-      requestBody: { role: "reader", type: "anyone" },
-    });
-
-    // ── Step 3: Get subject_id from DB ────────────────────────────────────────
-    // Auto-create subject if it doesn't exist
+    // ── Get or create subject_id from DB ─────────────────────────────────────
     await db.execute(
       "INSERT IGNORE INTO subjects (name) VALUES (?)",
       [subject]
@@ -61,33 +38,112 @@ export async function POST(request) {
       [subject]
     );
 
-    // ── Step 4: Save file metadata to MySQL ───────────────────────────────────
-    const [insertResult] = await db.execute(
-      `INSERT INTO lms_files
-        (drive_file_id, drive_url, name, category, type, subject_id, uploaded_by, size_bytes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        driveFile.id,
-        driveFile.webViewLink || "",
-        file.name,
+    let fileRecordId = null;
+    let responseFileData = null;
+
+    if (storageType === "YOUTUBE") {
+      // ── Step 1: Upload to YouTube ──────────────────────────────────────────
+      const youtubeResult = await uploadVideo({
+        title: file.name.replace(/\.[^/.]+$/, ""),
+        description: `LMS Lecture Video (${subject}) — Uploaded by ${uploadedBy}`,
+        fileStream: Readable.from(buffer),
+        privacyStatus: "unlisted",
+        tags: ["LMS", subject],
+      });
+
+      // ── Step 2: Save YouTube metadata to MySQL ──────────────────────────────
+      const [insertResult] = await db.execute(
+        `INSERT INTO lms_files
+          (drive_file_id, drive_url, name, category, type, subject_id, uploaded_by, size_bytes, storage_type, google_drive_id, youtube_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'YOUTUBE', NULL, ?)`,
+        [
+          youtubeResult.videoId,
+          youtubeResult.videoUrl,
+          file.name,
+          "Videos",
+          "Video",
+          subjectRow.id,
+          uploadedBy,
+          fileSize,
+          youtubeResult.videoUrl,
+        ]
+      );
+
+      fileRecordId = insertResult.insertId;
+      responseFileData = {
+        id: fileRecordId,
+        storageType: "YOUTUBE",
+        videoId: youtubeResult.videoId,
+        youtubeUrl: youtubeResult.videoUrl,
+        name: file.name,
+        category: "Videos",
+        type: "Video",
+        subject,
+      };
+
+    } else {
+      // ── Step 1: Resolve Drive path & upload to Google Drive ────────────────
+      const targetFolderId = await resolveDrivePath(mimeType, isAssign, subject);
+
+      const driveResponse = await drive.files.create({
+        requestBody: {
+          name: file.name,
+          parents: [targetFolderId],
+        },
+        media: {
+          mimeType,
+          body: Readable.from(buffer),
+        },
+        fields: "id, name, webViewLink, size",
+      });
+
+      const driveFile = driveResponse.data;
+
+      // Make file readable by anyone with the link
+      await drive.permissions.create({
+        fileId: driveFile.id,
+        requestBody: { role: "reader", type: "anyone" },
+      });
+
+      // ── Step 2: Save Drive metadata to MySQL ───────────────────────────────
+      const [insertResult] = await db.execute(
+        `INSERT INTO lms_files
+          (drive_file_id, drive_url, name, category, type, subject_id, uploaded_by, size_bytes, storage_type, google_drive_id, youtube_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE_DRIVE', ?, NULL)`,
+        [
+          driveFile.id,
+          driveFile.webViewLink || "",
+          file.name,
+          category,
+          type,
+          subjectRow.id,
+          uploadedBy,
+          parseInt(driveFile.size || fileSize.toString()),
+          driveFile.id,
+        ]
+      );
+
+      fileRecordId = insertResult.insertId;
+      responseFileData = {
+        id: fileRecordId,
+        storageType: "GOOGLE_DRIVE",
+        driveId: driveFile.id,
+        driveUrl: driveFile.webViewLink,
+        name: file.name,
         category,
         type,
-        subjectRow.id,
-        uploadedBy,
-        parseInt(driveFile.size || "0"),
-      ]
-    );
+        subject,
+      };
+    }
 
-    const newFileId = insertResult.insertId;
-
-    // ── Step 5: Grant access to selected students ─────────────────────────────
+    // ── Step 3: Grant access to selected students ─────────────────────────────
     const emails = sharedWith
       .split(",")
       .map((e) => e.trim())
       .filter(Boolean);
 
-    if (emails.length > 0) {
-      const accessValues = emails.map((email) => [newFileId, email]);
+    if (emails.length > 0 && fileRecordId) {
+      const accessValues = emails.map((email) => [fileRecordId, email]);
       await db.query(
         "INSERT IGNORE INTO file_access (file_id, user_email) VALUES ?",
         [accessValues]
@@ -96,21 +152,13 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      file: {
-        id: newFileId,
-        driveId: driveFile.id,
-        name: file.name,
-        category,
-        type,
-        subject,
-        driveUrl: driveFile.webViewLink,
-      },
+      file: responseFileData,
     });
 
   } catch (error) {
-    console.error("[Upload Error]", error);
+    console.error("[Upload API Error]", error);
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: error.message || "An error occurred during upload." },
       { status: 500 }
     );
   }
@@ -118,6 +166,6 @@ export async function POST(request) {
 
 export async function GET() {
   return NextResponse.json({
-    message: "Upload API — POST with FormData: file, subject, isAssignment, uploadedBy, sharedWith",
+    message: "Upload API — POST with FormData: file, subject, isAssignment, uploadedBy, sharedWith, storageType (GOOGLE_DRIVE | YOUTUBE)",
   });
 }

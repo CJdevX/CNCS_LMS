@@ -20,6 +20,11 @@ export interface UploadModalProps {
   onSuccess: () => void;
 }
 
+export type StorageType = "GOOGLE_DRIVE" | "YOUTUBE";
+
+const YOUTUBE_THRESHOLD_MB = parseInt(process.env.NEXT_PUBLIC_YOUTUBE_SIZE_THRESHOLD_MB || "100", 10) || 100;
+const YOUTUBE_SIZE_THRESHOLD_BYTES = YOUTUBE_THRESHOLD_MB * 1024 * 1024;
+
 const TYPE_COLORS: Record<string, { bg: string; text: string; icon: string }> = {
   PDF:         { bg: "#fee2e2", text: "#b91c1c", icon: "📄" },
   Word:        { bg: "#dbeafe", text: "#1d4ed8", icon: "📝" },
@@ -32,25 +37,28 @@ const TYPE_COLORS: Record<string, { bg: string; text: string; icon: string }> = 
 };
 
 export default function UploadModal({ subjects, defaultUploaderEmail, onClose, onSuccess }: UploadModalProps) {
-  const [file, setFile]             = useState<File | null>(null);
-  const [detected, setDetected]     = useState<DetectedInfo | null>(null);
-  const [subject, setSubject]       = useState<string>("");
-  const [newSubject, setNewSubj]    = useState<string>("");
-  const [isAssign, setIsAssign]     = useState<boolean>(false);
-  const [sharedWith, setShared]     = useState<string>("");
-  const [uploadedBy]                = useState<string>(defaultUploaderEmail || "");
-  const [loading, setLoading]       = useState<boolean>(false);
-  const [uploadProgress, setProgress] = useState<number>(0);
-  const [statusText, setStatusText]   = useState<string>("");
-  const [error, setError]           = useState<string>("");
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const fileRef                     = useRef<HTMLInputElement>(null);
+  const [file, setFile]                 = useState<File | null>(null);
+  const [detected, setDetected]         = useState<DetectedInfo | null>(null);
+  const [subject, setSubject]           = useState<string>("");
+  const [newSubject, setNewSubj]        = useState<string>("");
+  const [isAssign, setIsAssign]         = useState<boolean>(false);
+  const [sharedWith, setShared]         = useState<string>("");
+  const [uploadedBy]                    = useState<string>(defaultUploaderEmail || "");
+  const [storageType, setStorageType]   = useState<StorageType>("GOOGLE_DRIVE");
+  const [isAutoRouted, setIsAutoRouted] = useState<boolean>(false);
+
+  const [loading, setLoading]           = useState<boolean>(false);
+  const [uploadProgress, setProgress]     = useState<number>(0);
+  const [statusText, setStatusText]       = useState<string>("");
+  const [error, setError]               = useState<string>("");
+  const [isDragging, setIsDragging]     = useState<boolean>(false);
+  const fileRef                         = useRef<HTMLInputElement>(null);
 
   function detectType(mimeType: string, filename: string, isAssignment: boolean): DetectedInfo {
     if (isAssignment) return { category: "Assignments", type: "Assignment" };
     const lowerName = filename.toLowerCase();
     
-    if (mimeType.startsWith("video/") || lowerName.endsWith(".mp4") || lowerName.endsWith(".mkv") || lowerName.endsWith(".avi")) {
+    if (mimeType.startsWith("video/") || lowerName.endsWith(".mp4") || lowerName.endsWith(".mkv") || lowerName.endsWith(".avi") || lowerName.endsWith(".mov")) {
       return { category: "Videos", type: "Video" };
     }
     if (mimeType.startsWith("image/") || lowerName.endsWith(".png") || lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || lowerName.endsWith(".webp")) {
@@ -73,8 +81,19 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
 
   function handleFileSelect(f: File) {
     setFile(f);
-    setDetected(detectType(f.type, f.name, isAssign));
+    const info = detectType(f.type, f.name, isAssign);
+    setDetected(info);
     setError("");
+
+    // Auto-routing logic based on video type and file size threshold (>= 100 MB)
+    const isVideo = f.type.startsWith("video/") || /\.(mp4|mkv|avi|mov)$/i.test(f.name);
+    if (isVideo && f.size >= YOUTUBE_SIZE_THRESHOLD_BYTES) {
+      setStorageType("YOUTUBE");
+      setIsAutoRouted(true);
+    } else {
+      setStorageType("GOOGLE_DRIVE");
+      setIsAutoRouted(false);
+    }
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -119,7 +138,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
 
     setLoading(true);
     setProgress(0);
-    setStatusText("Preparing file upload…");
+    setStatusText(storageType === "YOUTUBE" ? "Preparing YouTube video upload…" : "Preparing Drive file upload…");
     setError("");
 
     const fd = new FormData();
@@ -128,6 +147,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
     fd.append("isAssignment", isAssign.toString());
     fd.append("uploadedBy",   uploadedBy.trim());
     fd.append("sharedWith",   sharedWith.trim());
+    fd.append("storageType",  storageType);
 
     // Use XMLHttpRequest for real-time progress events
     const xhr = new XMLHttpRequest();
@@ -140,7 +160,11 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
         if (percent < 100) {
           setStatusText(`Uploading file… ${percent}%`);
         } else {
-          setStatusText("Uploading & saving to Google Drive…");
+          setStatusText(
+            storageType === "YOUTUBE"
+              ? "Processing & saving video to YouTube…"
+              : "Uploading & saving to Google Drive…"
+          );
         }
       }
     };
@@ -157,7 +181,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
             onClose();
           }, 400);
         } else {
-          setError(data.error || "Upload failed.");
+          setError(data.error || data.message || "Upload failed.");
         }
       } catch (err) {
         setError("Invalid response from server.");
@@ -225,6 +249,57 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
               </div>
               <div className="detected-pill detected-cat">
                 📂 {detected.category}
+              </div>
+            </div>
+          )}
+
+          {/* Storage Destination Indicator & Selector */}
+          {file && (
+            <div
+              style={{
+                background: storageType === "YOUTUBE" ? "rgba(239, 68, 68, 0.08)" : "rgba(99, 102, 241, 0.08)",
+                border: storageType === "YOUTUBE" ? "1px solid rgba(239, 68, 68, 0.25)" : "1px solid rgba(99, 102, 241, 0.25)",
+                borderRadius: "var(--radius-sm)",
+                padding: "10px 14px",
+                margin: "6px 0",
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.82rem" }}>
+                <span style={{ fontWeight: "600", color: storageType === "YOUTUBE" ? "#f87171" : "#818cf8" }}>
+                  {storageType === "YOUTUBE" ? "🎥 Destination: YouTube" : "☁️ Destination: Google Drive"}
+                </span>
+                {isAutoRouted && (
+                  <span style={{ fontSize: "0.72rem", background: "rgba(239, 68, 68, 0.2)", color: "#fca5a5", padding: "2px 8px", borderRadius: "999px", fontWeight: "500" }}>
+                    ⚡ Auto-routed (&gt;{YOUTUBE_THRESHOLD_MB}MB Video)
+                  </span>
+                )}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" }}>
+                <label style={{ fontSize: "0.75rem", color: "var(--text-muted)", flexShrink: 0 }}>Storage Target:</label>
+                <select
+                  value={storageType}
+                  onChange={(e) => {
+                    setStorageType(e.target.value as StorageType);
+                    setIsAutoRouted(false);
+                  }}
+                  disabled={loading}
+                  style={{
+                    flex: 1,
+                    padding: "4px 8px",
+                    fontSize: "0.78rem",
+                    borderRadius: "6px",
+                    background: "var(--bg-input)",
+                    color: "var(--text-primary)",
+                    border: "1px solid var(--border)",
+                    cursor: loading ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <option value="GOOGLE_DRIVE">Google Drive (Default)</option>
+                  <option value="YOUTUBE">YouTube (Saves Drive Space)</option>
+                </select>
               </div>
             </div>
           )}
@@ -298,7 +373,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
                   style={{
                     height: "100%",
                     width: `${uploadProgress}%`,
-                    background: "linear-gradient(90deg, #6366f1, #34d399)",
+                    background: storageType === "YOUTUBE" ? "linear-gradient(90deg, #ef4444, #f97316)" : "linear-gradient(90deg, #6366f1, #34d399)",
                     borderRadius: "999px",
                     transition: "width 0.2s ease-in-out",
                   }}
@@ -309,8 +384,13 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
 
           {error && <p className="form-error">{error}</p>}
 
-          <button type="submit" className="btn-upload" disabled={loading} style={{ marginTop: "12px" }}>
-            {loading ? `Uploading… (${uploadProgress}%)` : "⬆️ Upload to Drive"}
+          <button type="submit" className="btn-upload" disabled={loading} style={{ marginTop: "12px", background: storageType === "YOUTUBE" ? "#dc2626" : undefined }}>
+            {loading
+              ? `Uploading… (${uploadProgress}%)`
+              : storageType === "YOUTUBE"
+              ? "🎥 Upload to YouTube"
+              : "⬆️ Upload to Drive"
+            }
           </button>
         </form>
       </div>

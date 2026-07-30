@@ -30,18 +30,26 @@ INSERT IGNORE INTO subjects (name) VALUES
 
 -- 3. Core files table
 CREATE TABLE IF NOT EXISTS lms_files (
-  id            INT PRIMARY KEY AUTO_INCREMENT,
-  drive_file_id VARCHAR(255)  NOT NULL,
-  drive_url     VARCHAR(512),
-  name          VARCHAR(255)  NOT NULL,
-  category      ENUM('Documents','Videos','Images','Assignments','Others') NOT NULL,
-  type          ENUM('PDF','Word','PowerPoint','Excel','Video','Image','Assignment','Other') NOT NULL,
-  subject_id    INT,
-  uploaded_by   VARCHAR(255),          -- Email of uploader
-  size_bytes    BIGINT DEFAULT 0,
-  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  id              INT PRIMARY KEY AUTO_INCREMENT,
+  drive_file_id   VARCHAR(255)  NOT NULL,
+  drive_url       VARCHAR(512),
+  name            VARCHAR(255)  NOT NULL,
+  category        ENUM('Documents','Videos','Images','Assignments','Others') NOT NULL,
+  type            ENUM('PDF','Word','PowerPoint','Excel','Video','Image','Assignment','Other') NOT NULL,
+  subject_id      INT,
+  uploaded_by     VARCHAR(255),          -- Email of uploader
+  size_bytes      BIGINT DEFAULT 0,
+  storage_type    ENUM('GOOGLE_DRIVE','YOUTUBE') NOT NULL DEFAULT 'GOOGLE_DRIVE',
+  google_drive_id VARCHAR(255),
+  youtube_url     TEXT,
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE SET NULL
 );
+
+-- Migration for existing lms_files tables
+ALTER TABLE lms_files ADD COLUMN IF NOT EXISTS storage_type ENUM('GOOGLE_DRIVE','YOUTUBE') NOT NULL DEFAULT 'GOOGLE_DRIVE';
+ALTER TABLE lms_files ADD COLUMN IF NOT EXISTS google_drive_id VARCHAR(255) NULL;
+ALTER TABLE lms_files ADD COLUMN IF NOT EXISTS youtube_url TEXT NULL;
 
 -- 4. Person-wise access
 CREATE TABLE IF NOT EXISTS file_access (
@@ -57,4 +65,6 @@ CREATE INDEX idx_files_type       ON lms_files(type);
 CREATE INDEX idx_files_category   ON lms_files(category);
 CREATE INDEX idx_files_subject    ON lms_files(subject_id);
 CREATE INDEX idx_files_uploader   ON lms_files(uploaded_by);
+CREATE INDEX idx_files_storage    ON lms_files(storage_type);
 CREATE INDEX idx_access_email     ON file_access(user_email);
+

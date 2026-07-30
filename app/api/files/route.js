@@ -33,6 +33,9 @@ export async function GET(request) {
         f.type,
         f.uploaded_by,
         f.size_bytes,
+        f.storage_type,
+        f.google_drive_id,
+        f.youtube_url,
         f.created_at,
         s.name AS subject
       FROM lms_files f
