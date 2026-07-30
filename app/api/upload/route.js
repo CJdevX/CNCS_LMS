@@ -13,7 +13,7 @@ export async function POST(request) {
     const isAssign    = formData.get("isAssignment") === "true";
     const uploadedBy  = formData.get("uploadedBy") || "unknown";
     const sharedWith  = formData.get("sharedWith") || ""; // comma-separated emails
-    const storageType = formData.get("storageType") || "GOOGLE_DRIVE"; // GOOGLE_DRIVE or YOUTUBE
+    const inputStorageType = formData.get("storageType"); // GOOGLE_DRIVE, YOUTUBE, or AUTO/undefined
 
     // ── Validation ────────────────────────────────────────────────────────────
     if (!file) {
@@ -27,6 +27,20 @@ export async function POST(request) {
     const { category, type } = resolveFileCategory(mimeType, isAssign);
     const fileSize = file.size || 0;
     const buffer = Buffer.from(await file.arrayBuffer());
+
+    // ── Determine Storage Destination ──────────────────────────────────────────
+    let storageType = inputStorageType || "GOOGLE_DRIVE";
+    const youtubeThresholdMB = parseInt(process.env.YOUTUBE_VIDEO_SIZE_MB || "100", 10) || 100;
+    const youtubeThresholdBytes = youtubeThresholdMB * 1024 * 1024;
+
+    const isVideoFile = mimeType.startsWith("video/") || /\.(mp4|mkv|avi|mov|webm)$/i.test(file.name);
+    if (!inputStorageType || inputStorageType === "AUTO") {
+      if (isVideoFile && fileSize >= youtubeThresholdBytes) {
+        storageType = "YOUTUBE";
+      } else {
+        storageType = "GOOGLE_DRIVE";
+      }
+    }
 
     // ── Get or create subject_id from DB ─────────────────────────────────────
     await db.execute(

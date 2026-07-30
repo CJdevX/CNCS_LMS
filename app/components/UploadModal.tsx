@@ -22,7 +22,7 @@ export interface UploadModalProps {
 
 export type StorageType = "GOOGLE_DRIVE" | "YOUTUBE";
 
-const YOUTUBE_THRESHOLD_MB = parseInt(process.env.NEXT_PUBLIC_YOUTUBE_SIZE_THRESHOLD_MB || "100", 10) || 100;
+const YOUTUBE_THRESHOLD_MB = parseInt(process.env.YOUTUBE_VIDEO_SIZE_MB || "100", 10) || 100;
 const YOUTUBE_SIZE_THRESHOLD_BYTES = YOUTUBE_THRESHOLD_MB * 1024 * 1024;
 
 const TYPE_COLORS: Record<string, { bg: string; text: string; icon: string }> = {
@@ -273,7 +273,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
                 </span>
                 {isAutoRouted && (
                   <span style={{ fontSize: "0.72rem", background: "rgba(239, 68, 68, 0.2)", color: "#fca5a5", padding: "2px 8px", borderRadius: "999px", fontWeight: "500" }}>
-                    ⚡ Auto-routed (&gt;{YOUTUBE_THRESHOLD_MB}MB Video)
+                    ⚡ Auto-routed (&gt;={YOUTUBE_THRESHOLD_MB}MB Video)
                   </span>
                 )}
               </div>

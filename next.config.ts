@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  env: {
+    YOUTUBE_VIDEO_SIZE_MB: process.env.YOUTUBE_VIDEO_SIZE_MB || "100",
+  },
 };
 
 export default nextConfig;
