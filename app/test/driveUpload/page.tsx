@@ -60,7 +60,7 @@ export default function UploadTestPage() {
       const formData = new FormData();
       formData.append("file", selectedFile);
 
-      const response = await fetch("/api/upload-test", {
+      const response = await fetch("/api/test/driveUpload", {
         method: "POST",
         body: formData,
       });

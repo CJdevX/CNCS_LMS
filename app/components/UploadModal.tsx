@@ -32,17 +32,19 @@ const TYPE_COLORS: Record<string, { bg: string; text: string; icon: string }> = 
 };
 
 export default function UploadModal({ subjects, defaultUploaderEmail, onClose, onSuccess }: UploadModalProps) {
-  const [file, setFile]           = useState<File | null>(null);
-  const [detected, setDetected]   = useState<DetectedInfo | null>(null);
-  const [subject, setSubject]     = useState<string>("");
-  const [newSubject, setNewSubj]  = useState<string>("");
-  const [isAssign, setIsAssign]   = useState<boolean>(false);
-  const [sharedWith, setShared]   = useState<string>("");
-  const [uploadedBy]              = useState<string>(defaultUploaderEmail || "");
-  const [loading, setLoading]     = useState<boolean>(false);
-  const [error, setError]         = useState<string>("");
+  const [file, setFile]             = useState<File | null>(null);
+  const [detected, setDetected]     = useState<DetectedInfo | null>(null);
+  const [subject, setSubject]       = useState<string>("");
+  const [newSubject, setNewSubj]    = useState<string>("");
+  const [isAssign, setIsAssign]     = useState<boolean>(false);
+  const [sharedWith, setShared]     = useState<string>("");
+  const [uploadedBy]                = useState<string>(defaultUploaderEmail || "");
+  const [loading, setLoading]       = useState<boolean>(false);
+  const [uploadProgress, setProgress] = useState<number>(0);
+  const [statusText, setStatusText]   = useState<string>("");
+  const [error, setError]           = useState<string>("");
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const fileRef                   = useRef<HTMLInputElement>(null);
+  const fileRef                     = useRef<HTMLInputElement>(null);
 
   function detectType(mimeType: string, filename: string, isAssignment: boolean): DetectedInfo {
     if (isAssignment) return { category: "Assignments", type: "Assignment" };
@@ -116,6 +118,8 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
     if (!subject && !newSubject) return setError("Please select or enter a subject.");
 
     setLoading(true);
+    setProgress(0);
+    setStatusText("Preparing file upload…");
     setError("");
 
     const fd = new FormData();
@@ -125,17 +129,47 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
     fd.append("uploadedBy",   uploadedBy.trim());
     fd.append("sharedWith",   sharedWith.trim());
 
-    try {
-      const res  = await fetch("/api/upload", { method: "POST", body: fd });
-      const data = await res.json();
+    // Use XMLHttpRequest for real-time progress events
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload", true);
 
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percent = Math.round((event.loaded / event.total) * 100);
+        setProgress(percent);
+        if (percent < 100) {
+          setStatusText(`Uploading file… ${percent}%`);
+        } else {
+          setStatusText("Uploading & saving to Google Drive…");
+        }
+      }
+    };
+
+    xhr.onload = () => {
       setLoading(false);
-      if (data.success) { onSuccess(); onClose(); }
-      else setError(data.error || "Upload failed.");
-    } catch (err: unknown) {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300 && data.success) {
+          setProgress(100);
+          setStatusText("Upload complete!");
+          setTimeout(() => {
+            onSuccess();
+            onClose();
+          }, 400);
+        } else {
+          setError(data.error || "Upload failed.");
+        }
+      } catch (err) {
+        setError("Invalid response from server.");
+      }
+    };
+
+    xhr.onerror = () => {
       setLoading(false);
-      setError(err instanceof Error ? err.message : "Upload failed.");
-    }
+      setError("Network error occurred during upload.");
+    };
+
+    xhr.send(fd);
   }
 
   const style = detected ? (TYPE_COLORS[detected.type] || TYPE_COLORS.Other) : null;
@@ -145,20 +179,22 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Upload File</h2>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+          <button type="button" className="modal-close" onClick={onClose} disabled={loading}>✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="modal-form">
           {/* Drag & Drop Zone */}
           <div
             className={`dropzone ${isDragging ? "dragging" : ""}`}
-            onClick={() => fileRef.current?.click()}
+            onClick={() => !loading && fileRef.current?.click()}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             style={{
               borderColor: isDragging ? "var(--accent)" : undefined,
               background: isDragging ? "rgba(99, 102, 241, 0.15)" : undefined,
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.7 : 1,
             }}
           >
             {file ? (
@@ -168,7 +204,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
                 <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
                   Size: <strong>{formatFileSize(file.size)}</strong>
                 </p>
-                <p className="dropzone-change">Click or drag another file to replace</p>
+                {!loading && <p className="dropzone-change">Click or drag another file to replace</p>}
               </div>
             ) : (
               <>
@@ -179,7 +215,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
                 </p>
               </>
             )}
-            <input ref={fileRef} type="file" hidden onChange={handleFileChange} />
+            <input ref={fileRef} type="file" hidden onChange={handleFileChange} disabled={loading} />
           </div>
 
           {detected && style && (
@@ -194,15 +230,15 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
           )}
 
           {/* Mark as Assignment Checkbox */}
-          <label className="checkbox-row" style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "0.85rem", margin: "4px 0" }}>
-            <input type="checkbox" checked={isAssign} onChange={handleAssignToggle} style={{ width: "16px", height: "16px", cursor: "pointer" }} />
+          <label className="checkbox-row" style={{ display: "flex", alignItems: "center", gap: "8px", cursor: loading ? "not-allowed" : "pointer", fontSize: "0.85rem", margin: "4px 0" }}>
+            <input type="checkbox" checked={isAssign} onChange={handleAssignToggle} disabled={loading} style={{ width: "16px", height: "16px", cursor: "pointer" }} />
             <span>📋 Mark as Assignment</span>
           </label>
 
           {/* Subject select */}
           <div className="field-group">
             <label>Subject *</label>
-            <select value={subject} onChange={(e) => setSubject(e.target.value)}>
+            <select value={subject} onChange={(e) => setSubject(e.target.value)} disabled={loading}>
               <option value="">— Select subject —</option>
               {subjects.map((s) => (
                 <option key={s.id} value={s.name}>{s.name}</option>
@@ -214,6 +250,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
               placeholder="e.g. Mathematics"
               value={newSubject}
               onChange={(e) => setNewSubj(e.target.value)}
+              disabled={loading}
             />
           </div>
 
@@ -236,13 +273,44 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
               placeholder="student1@gmail.com, student2@gmail.com"
               value={sharedWith}
               onChange={(e) => setShared(e.target.value)}
+              disabled={loading}
             />
           </div>
 
+          {/* ── Progress Bar Card (Visible when uploading) ── */}
+          {loading && (
+            <div style={{
+              background: "rgba(99, 102, 241, 0.08)",
+              border: "1px solid rgba(99, 102, 241, 0.25)",
+              borderRadius: "var(--radius-sm)",
+              padding: "14px 16px",
+              marginTop: "10px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", fontWeight: "600", color: "var(--text-primary)" }}>
+                <span>{statusText}</span>
+                <span style={{ color: "var(--accent)" }}>{uploadProgress}%</span>
+              </div>
+              <div style={{ width: "100%", height: "8px", background: "var(--bg-input)", borderRadius: "999px", overflow: "hidden", border: "1px solid var(--border)" }}>
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${uploadProgress}%`,
+                    background: "linear-gradient(90deg, #6366f1, #34d399)",
+                    borderRadius: "999px",
+                    transition: "width 0.2s ease-in-out",
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           {error && <p className="form-error">{error}</p>}
 
-          <button type="submit" className="btn-upload" disabled={loading}>
-            {loading ? "Uploading to Drive…" : "⬆️ Upload to Drive"}
+          <button type="submit" className="btn-upload" disabled={loading} style={{ marginTop: "12px" }}>
+            {loading ? `Uploading… (${uploadProgress}%)` : "⬆️ Upload to Drive"}
           </button>
         </form>
       </div>
