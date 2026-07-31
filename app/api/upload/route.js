@@ -1,4 +1,4 @@
-import drive, { resolveDrivePath, resolveFileCategory } from "@/lib/googleDrive";
+import drive, { resolveDrivePath, resolveFileCategory } from "@/services/drive.service";
 import { uploadVideo } from "@/services/youtube.service";
 import db from "@/lib/database";
 import { NextResponse } from "next/server";
@@ -148,20 +148,6 @@ export async function POST(request) {
         type,
         subject,
       };
-    }
-
-    // ── Step 3: Grant access to selected students ─────────────────────────────
-    const emails = sharedWith
-      .split(",")
-      .map((e) => e.trim())
-      .filter(Boolean);
-
-    if (emails.length > 0 && fileRecordId) {
-      const accessValues = emails.map((email) => [fileRecordId, email]);
-      await db.query(
-        "INSERT IGNORE INTO file_access (file_id, user_email) VALUES ?",
-        [accessValues]
-      );
     }
 
     return NextResponse.json({

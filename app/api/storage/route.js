@@ -1,5 +1,5 @@
 import db from "@/lib/database";
-import { getDriveStorageQuota } from "@/lib/googleDrive";
+import { getDriveStorageQuota } from "@/services/drive.service";
 import { NextResponse } from "next/server";
 
 export async function GET() {

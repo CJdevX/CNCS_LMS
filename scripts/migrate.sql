@@ -51,20 +51,10 @@ ALTER TABLE lms_files ADD COLUMN IF NOT EXISTS storage_type ENUM('GOOGLE_DRIVE',
 ALTER TABLE lms_files ADD COLUMN IF NOT EXISTS google_drive_id VARCHAR(255) NULL;
 ALTER TABLE lms_files ADD COLUMN IF NOT EXISTS youtube_url TEXT NULL;
 
--- 4. Person-wise access
-CREATE TABLE IF NOT EXISTS file_access (
-  file_id    INT          NOT NULL,
-  user_email VARCHAR(255) NOT NULL,
-  granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (file_id, user_email),
-  FOREIGN KEY (file_id) REFERENCES lms_files(id) ON DELETE CASCADE
-);
-
 -- Indexes for fast filtering
 CREATE INDEX idx_files_type       ON lms_files(type);
 CREATE INDEX idx_files_category   ON lms_files(category);
 CREATE INDEX idx_files_subject    ON lms_files(subject_id);
 CREATE INDEX idx_files_uploader   ON lms_files(uploaded_by);
 CREATE INDEX idx_files_storage    ON lms_files(storage_type);
-CREATE INDEX idx_access_email     ON file_access(user_email);
 

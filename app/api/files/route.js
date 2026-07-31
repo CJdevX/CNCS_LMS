@@ -1,5 +1,5 @@
 import db from "@/lib/database";
-import drive from "@/lib/googleDrive";
+import drive from "@/services/drive.service";
 import { deleteVideo } from "@/services/youtube.service";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
@@ -43,16 +43,15 @@ export async function GET(request) {
         s.name AS subject
       FROM lms_files f
       LEFT JOIN subjects s ON f.subject_id = s.id
-      LEFT JOIN file_access fa ON f.id = fa.file_id
     `;
 
     const conditions = [];
     const params = [];
 
-    // Person-wise filter — matches files uploaded by or shared with this email
+    // Filter by uploader email
     if (userEmail) {
-      conditions.push("(LOWER(f.uploaded_by) = ? OR LOWER(fa.user_email) = ?)");
-      params.push(userEmail.toLowerCase(), userEmail.toLowerCase());
+      conditions.push("LOWER(f.uploaded_by) = ?");
+      params.push(userEmail.toLowerCase());
     }
 
     if (category === "Others" || type === "Other") {
@@ -159,7 +158,6 @@ export async function DELETE(request) {
     }
 
     // Delete DB records
-    await db.execute("DELETE FROM file_access WHERE file_id = ?", [fileId]);
     await db.execute("DELETE FROM lms_files WHERE id = ?", [fileId]);
 
     return NextResponse.json({

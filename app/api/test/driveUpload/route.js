@@ -1,4 +1,4 @@
-import drive from "@/lib/googleDrive";
+import drive from "@/services/drive.service";
 import { NextResponse } from "next/server";
 import { Readable } from "stream";
 
