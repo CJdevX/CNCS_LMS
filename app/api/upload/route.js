@@ -1,11 +1,14 @@
 import drive, { resolveDrivePath, resolveFileCategory } from "@/services/drive.service";
 import { uploadVideo } from "@/services/youtube.service";
-import db from "@/lib/database";
+import dbConnect from "@/lib/database";
+import Subject from "@/lib/models/Subject";
+import File from "@/lib/models/File";
 import { NextResponse } from "next/server";
 import { Readable } from "stream";
 
 export async function POST(request) {
   try {
+    await dbConnect();
     const formData = await request.formData();
 
     const file        = formData.get("file");
@@ -13,7 +16,6 @@ export async function POST(request) {
     const isAssign    = formData.get("isAssignment") === "true";
     const uploadedBy  = formData.get("uploadedBy") || "unknown";
     const sharedWith  = formData.get("sharedWith") || ""; // comma-separated emails
-    const inputStorageType = formData.get("storageType"); // GOOGLE_DRIVE, YOUTUBE, or AUTO/undefined
 
     // ── Validation ────────────────────────────────────────────────────────────
     if (!file) {
@@ -29,26 +31,14 @@ export async function POST(request) {
     const buffer = Buffer.from(await file.arrayBuffer());
 
     // ── Determine Storage Destination ──────────────────────────────────────────
-    // Rule: Every video must upload to YouTube; other files upload to Google Drive.
     const isVideoFile = mimeType.startsWith("video/") || /\.(mp4|mkv|avi|mov|webm|flv|wmv|m4v|3gp|ts)$/i.test(file.name);
     const storageType = isVideoFile ? "YOUTUBE" : "GOOGLE_DRIVE";
 
-    // ── Auto-Migrate DB Columns if needed ─────────────────────────────────────
-    try {
-      await db.execute("ALTER TABLE lms_files MODIFY COLUMN category VARCHAR(100) NOT NULL");
-      await db.execute("ALTER TABLE lms_files MODIFY COLUMN type VARCHAR(100) NOT NULL");
-    } catch (e) {
-      // Ignore if already modified or unprivileged
-    }
-
-    // ── Get or create subject_id from DB ─────────────────────────────────────
-    await db.execute(
-      "INSERT IGNORE INTO subjects (name) VALUES (?)",
-      [subject]
-    );
-    const [[subjectRow]] = await db.execute(
-      "SELECT id FROM subjects WHERE name = ?",
-      [subject]
+    // ── Get or create subject in MongoDB ──────────────────────────────────────
+    const subjectDoc = await Subject.findOneAndUpdate(
+      { name: subject.trim() },
+      { $setOnInsert: { name: subject.trim() } },
+      { upsert: true, new: true }
     );
 
     let fileRecordId = null;
@@ -64,25 +54,22 @@ export async function POST(request) {
         tags: ["LMS", subject],
       });
 
-      // ── Step 2: Save YouTube metadata to MySQL ──────────────────────────────
-      const [insertResult] = await db.execute(
-        `INSERT INTO lms_files
-          (drive_file_id, drive_url, name, category, type, subject_id, uploaded_by, size_bytes, storage_type, google_drive_id, youtube_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'YOUTUBE', NULL, ?)`,
-        [
-          youtubeResult.videoId,
-          youtubeResult.videoUrl,
-          file.name,
-          "Videos",
-          "Video",
-          subjectRow.id,
-          uploadedBy,
-          fileSize,
-          youtubeResult.videoUrl,
-        ]
-      );
+      // ── Step 2: Save YouTube metadata to MongoDB ───────────────────────────
+      const createdFile = await File.create({
+        drive_file_id: youtubeResult.videoId,
+        drive_url: youtubeResult.videoUrl,
+        name: file.name,
+        category: "Videos",
+        type: "Video",
+        subject_id: subjectDoc._id,
+        uploaded_by: uploadedBy.toLowerCase().trim(),
+        size_bytes: fileSize,
+        storage_type: "YOUTUBE",
+        google_drive_id: null,
+        youtube_url: youtubeResult.videoUrl,
+      });
 
-      fileRecordId = insertResult.insertId;
+      fileRecordId = createdFile._id.toString();
       responseFileData = {
         id: fileRecordId,
         storageType: "YOUTUBE",
@@ -91,7 +78,7 @@ export async function POST(request) {
         name: file.name,
         category: "Videos",
         type: "Video",
-        subject,
+        subject: subjectDoc.name,
       };
 
     } else {
@@ -118,25 +105,22 @@ export async function POST(request) {
         requestBody: { role: "reader", type: "anyone" },
       });
 
-      // ── Step 2: Save Drive metadata to MySQL ───────────────────────────────
-      const [insertResult] = await db.execute(
-        `INSERT INTO lms_files
-          (drive_file_id, drive_url, name, category, type, subject_id, uploaded_by, size_bytes, storage_type, google_drive_id, youtube_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE_DRIVE', ?, NULL)`,
-        [
-          driveFile.id,
-          driveFile.webViewLink || "",
-          file.name,
-          category,
-          type,
-          subjectRow.id,
-          uploadedBy,
-          parseInt(driveFile.size || fileSize.toString()),
-          driveFile.id,
-        ]
-      );
+      // ── Step 2: Save Drive metadata to MongoDB ────────────────────────────
+      const createdFile = await File.create({
+        drive_file_id: driveFile.id,
+        drive_url: driveFile.webViewLink || "",
+        name: file.name,
+        category,
+        type,
+        subject_id: subjectDoc._id,
+        uploaded_by: uploadedBy.toLowerCase().trim(),
+        size_bytes: parseInt(driveFile.size || fileSize.toString()),
+        storage_type: "GOOGLE_DRIVE",
+        google_drive_id: driveFile.id,
+        youtube_url: null,
+      });
 
-      fileRecordId = insertResult.insertId;
+      fileRecordId = createdFile._id.toString();
       responseFileData = {
         id: fileRecordId,
         storageType: "GOOGLE_DRIVE",
@@ -145,7 +129,7 @@ export async function POST(request) {
         name: file.name,
         category,
         type,
-        subject,
+        subject: subjectDoc.name,
       };
     }
 
@@ -165,6 +149,6 @@ export async function POST(request) {
 
 export async function GET() {
   return NextResponse.json({
-    message: "Upload API — POST with FormData: file, subject, isAssignment, uploadedBy, sharedWith, storageType (GOOGLE_DRIVE | YOUTUBE)",
+    message: "Upload API — POST with FormData: file, subject, isAssignment, uploadedBy, sharedWith",
   });
 }

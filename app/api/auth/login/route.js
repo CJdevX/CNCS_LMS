@@ -1,4 +1,5 @@
-import db from "@/lib/database";
+import dbConnect from "@/lib/database";
+import User from "@/lib/models/User";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
@@ -14,6 +15,7 @@ function verifyPassword(password, storedHash) {
 
 export async function POST(request) {
   try {
+    await dbConnect();
     const { email, password } = await request.json();
 
     const cleanEmail = email?.trim().toLowerCase();
@@ -26,19 +28,14 @@ export async function POST(request) {
     }
 
     // Find user by email
-    const [rows] = await db.execute(
-      "SELECT id, name, email, password_hash FROM users WHERE LOWER(email) = ?",
-      [cleanEmail]
-    );
+    const user = await User.findOne({ email: cleanEmail });
 
-    if (rows.length === 0) {
+    if (!user) {
       return NextResponse.json(
         { success: false, error: "Invalid email or password." },
         { status: 401 }
       );
     }
-
-    const user = rows[0];
 
     // Verify password
     const isPasswordValid = verifyPassword(password, user.password_hash);
@@ -50,7 +47,7 @@ export async function POST(request) {
     }
 
     const userProfile = {
-      id: user.id,
+      id: user._id.toString(),
       name: user.name,
       email: user.email,
     };

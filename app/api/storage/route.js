@@ -1,46 +1,97 @@
-import db from "@/lib/database";
+import dbConnect from "@/lib/database";
+import File from "@/lib/models/File";
+import User from "@/lib/models/User";
 import { getDriveStorageQuota } from "@/services/drive.service";
 import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
+    await dbConnect();
+
     // 1. Fetch official Google Drive Quota
-    const driveInfo = await getDriveStorageQuota();
+    let driveInfo = null;
+    try {
+      driveInfo = await getDriveStorageQuota();
+    } catch (e) {
+      console.warn("[Storage API] Drive quota fetch warning:", e.message);
+    }
     const storageQuota = driveInfo?.storageQuota || {};
 
     const limitBytes  = parseInt(storageQuota.limit || "16106127360", 10); // Default 15 GB
     const usageBytes  = parseInt(storageQuota.usage || "0", 10);
     const driveBytes  = parseInt(storageQuota.usageInDrive || "0", 10);
 
-    // 2. Fetch database LMS aggregate grouped by storage_type
-    const [lmsTotals] = await db.execute(`
-      SELECT 
-        COUNT(*) AS total_files, 
-        COALESCE(SUM(size_bytes), 0) AS total_lms_bytes,
-        COALESCE(SUM(CASE WHEN storage_type = 'GOOGLE_DRIVE' THEN size_bytes ELSE 0 END), 0) AS drive_lms_bytes,
-        COALESCE(SUM(CASE WHEN storage_type = 'YOUTUBE' THEN size_bytes ELSE 0 END), 0) AS youtube_lms_bytes,
-        COALESCE(SUM(CASE WHEN storage_type = 'YOUTUBE' THEN 1 ELSE 0 END), 0) AS youtube_file_count
-      FROM lms_files
-    `);
+    // 2. Aggregate LMS files grouped by storage_type
+    const lmsAggregate = await File.aggregate([
+      {
+        $group: {
+          _id: null,
+          total_files: { $sum: 1 },
+          total_lms_bytes: { $sum: "$size_bytes" },
+          drive_lms_bytes: {
+            $sum: {
+              $cond: [{ $eq: ["$storage_type", "GOOGLE_DRIVE"] }, "$size_bytes", 0],
+            },
+          },
+          youtube_lms_bytes: {
+            $sum: {
+              $cond: [{ $eq: ["$storage_type", "YOUTUBE"] }, "$size_bytes", 0],
+            },
+          },
+          youtube_file_count: {
+            $sum: {
+              $cond: [{ $eq: ["$storage_type", "YOUTUBE"] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]);
 
-    const totalFiles       = lmsTotals[0]?.total_files || 0;
-    const totalLmsBytes    = parseInt(lmsTotals[0]?.total_lms_bytes || 0, 10);
-    const driveLmsBytes    = parseInt(lmsTotals[0]?.drive_lms_bytes || 0, 10);
-    const youtubeLmsBytes  = parseInt(lmsTotals[0]?.youtube_lms_bytes || 0, 10);
-    const youtubeFileCount = parseInt(lmsTotals[0]?.youtube_file_count || 0, 10);
+    const stats = lmsAggregate[0] || {
+      total_files: 0,
+      total_lms_bytes: 0,
+      drive_lms_bytes: 0,
+      youtube_lms_bytes: 0,
+      youtube_file_count: 0,
+    };
 
-    // 3. Fetch storage breakdown per user
-    const [userBreakdown] = await db.execute(`
-      SELECT 
-        f.uploaded_by AS email,
-        COALESCE(u.name, f.uploaded_by) AS name,
-        COUNT(f.id) AS file_count,
-        COALESCE(SUM(f.size_bytes), 0) AS storage_bytes
-      FROM lms_files f
-      LEFT JOIN users u ON LOWER(f.uploaded_by) = LOWER(u.email)
-      GROUP BY f.uploaded_by, u.name
-      ORDER BY storage_bytes DESC
-    `);
+    const totalFiles       = stats.total_files;
+    const totalLmsBytes    = stats.total_lms_bytes;
+    const driveLmsBytes    = stats.drive_lms_bytes;
+    const youtubeLmsBytes  = stats.youtube_lms_bytes;
+    const youtubeFileCount = stats.youtube_file_count;
+
+    // 3. Aggregate storage breakdown per user
+    const userBreakdownRaw = await File.aggregate([
+      {
+        $group: {
+          _id: "$uploaded_by",
+          file_count: { $sum: 1 },
+          storage_bytes: { $sum: "$size_bytes" },
+        },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "email",
+          as: "userInfo",
+        },
+      },
+      {
+        $project: {
+          email: "$_id",
+          name: {
+            $ifNull: [{ $arrayElemAt: ["$userInfo.name", 0] }, "$_id"],
+          },
+          file_count: 1,
+          storage_bytes: 1,
+        },
+      },
+      {
+        $sort: { storage_bytes: -1 },
+      },
+    ]);
 
     return NextResponse.json({
       success: true,
@@ -56,7 +107,7 @@ export async function GET() {
         totalFiles,
         userEmail: driveInfo?.user?.emailAddress || "Google Drive Account",
       },
-      users: userBreakdown,
+      users: userBreakdownRaw,
     });
   } catch (error) {
     console.error("[Storage API Error]", error);

@@ -1,4 +1,6 @@
-import db from "@/lib/database";
+import dbConnect from "@/lib/database";
+import File from "@/lib/models/File";
+import Subject from "@/lib/models/Subject";
 import drive from "@/services/drive.service";
 import { deleteVideo } from "@/services/youtube.service";
 import { NextResponse } from "next/server";
@@ -17,6 +19,7 @@ import { cookies } from "next/headers";
  */
 export async function GET(request) {
   try {
+    await dbConnect();
     const { searchParams } = new URL(request.url);
 
     const category  = searchParams.get("category");
@@ -25,53 +28,56 @@ export async function GET(request) {
     const userEmail = searchParams.get("userEmail");
     const search    = searchParams.get("search");
 
-    // Base query with subject name join
-    let query = `
-      SELECT DISTINCT
-        f.id,
-        f.drive_file_id,
-        f.drive_url,
-        f.name,
-        f.category,
-        f.type,
-        f.uploaded_by,
-        f.size_bytes,
-        f.storage_type,
-        f.google_drive_id,
-        f.youtube_url,
-        f.created_at,
-        s.name AS subject
-      FROM lms_files f
-      LEFT JOIN subjects s ON f.subject_id = s.id
-    `;
-
-    const conditions = [];
-    const params = [];
+    const queryFilter = {};
 
     // Filter by uploader email
     if (userEmail) {
-      conditions.push("LOWER(f.uploaded_by) = ?");
-      params.push(userEmail.toLowerCase());
+      queryFilter.uploaded_by = userEmail.toLowerCase().trim();
     }
 
     if (category === "Others" || type === "Other") {
-      conditions.push("(f.category = 'Others' OR f.type = 'Other')");
+      queryFilter.$or = [{ category: "Others" }, { type: "Other" }];
     } else {
-      if (category)  { conditions.push("f.category = ?");  params.push(category); }
-      if (type)      { conditions.push("f.type = ?");       params.push(type); }
-    }
-    if (subject)   { conditions.push("s.name = ?");       params.push(subject); }
-    if (search)    { conditions.push("f.name LIKE ?");    params.push(`%${search}%`); }
-
-    if (conditions.length > 0) {
-      query += " WHERE " + conditions.join(" AND ");
+      if (category) queryFilter.category = category;
+      if (type)     queryFilter.type = type;
     }
 
-    query += " ORDER BY f.created_at DESC";
+    if (subject) {
+      const subjectDoc = await Subject.findOne({ name: subject.trim() });
+      if (subjectDoc) {
+        queryFilter.subject_id = subjectDoc._id;
+      } else {
+        // If subject name given doesn't exist, return empty array immediately
+        return NextResponse.json({ success: true, count: 0, files: [] });
+      }
+    }
 
-    const [rows] = await db.execute(query, params);
+    if (search) {
+      queryFilter.name = { $regex: search.trim(), $options: "i" };
+    }
 
-    return NextResponse.json({ success: true, count: rows.length, files: rows });
+    const files = await File.find(queryFilter)
+      .populate("subject_id", "name")
+      .sort({ created_at: -1 })
+      .lean();
+
+    const formattedFiles = files.map((f) => ({
+      id: f._id.toString(),
+      drive_file_id: f.drive_file_id,
+      drive_url: f.drive_url,
+      name: f.name,
+      category: f.category,
+      type: f.type,
+      uploaded_by: f.uploaded_by,
+      size_bytes: f.size_bytes,
+      storage_type: f.storage_type,
+      google_drive_id: f.google_drive_id,
+      youtube_url: f.youtube_url,
+      created_at: f.created_at,
+      subject: f.subject_id?.name || null,
+    }));
+
+    return NextResponse.json({ success: true, count: formattedFiles.length, files: formattedFiles });
 
   } catch (error) {
     console.error("[Files API Error]", error);
@@ -90,6 +96,7 @@ export async function GET(request) {
  */
 export async function DELETE(request) {
   try {
+    await dbConnect();
     const cookieStore = await cookies();
     const sessionToken = cookieStore.get("lms_session")?.value;
 
@@ -117,10 +124,7 @@ export async function DELETE(request) {
     }
 
     // Find file in database
-    const [[file]] = await db.execute(
-      "SELECT * FROM lms_files WHERE id = ?",
-      [fileId]
-    );
+    const file = await File.findById(fileId);
 
     if (!file) {
       return NextResponse.json({ success: false, error: "File not found." }, { status: 404 });
@@ -135,7 +139,6 @@ export async function DELETE(request) {
     }
 
     // Delete from Google Drive or YouTube
-    let externalDeleteWarning = null;
     if (file.storage_type === "YOUTUBE") {
       const targetYtId = file.drive_file_id || file.youtube_url;
       if (targetYtId) {
@@ -143,7 +146,6 @@ export async function DELETE(request) {
           await deleteVideo(targetYtId);
         } catch (ytErr) {
           console.error("[YouTube Delete API Failed]", ytErr?.response?.data || ytErr?.message || ytErr);
-          externalDeleteWarning = "File removed from LMS database, but YouTube video could not be deleted automatically due to insufficient OAuth permissions on your Google Refresh Token.";
         }
       }
     } else {
@@ -157,8 +159,8 @@ export async function DELETE(request) {
       }
     }
 
-    // Delete DB records
-    await db.execute("DELETE FROM lms_files WHERE id = ?", [fileId]);
+    // Delete DB document
+    await File.findByIdAndDelete(fileId);
 
     return NextResponse.json({
       success: true,
@@ -174,4 +176,3 @@ export async function DELETE(request) {
     );
   }
 }
-

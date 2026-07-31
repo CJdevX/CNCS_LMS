@@ -1,4 +1,5 @@
-import db from "@/lib/database";
+import dbConnect from "@/lib/database";
+import User from "@/lib/models/User";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
@@ -10,6 +11,7 @@ function hashPassword(password) {
 
 export async function POST(request) {
   try {
+    await dbConnect();
     const { name, email, password } = await request.json();
 
     const cleanName  = name?.trim();
@@ -30,12 +32,9 @@ export async function POST(request) {
     }
 
     // Check if user already exists
-    const [existing] = await db.execute(
-      "SELECT id FROM users WHERE LOWER(email) = ?",
-      [cleanEmail]
-    );
+    const existing = await User.findOne({ email: cleanEmail });
 
-    if (existing.length > 0) {
+    if (existing) {
       return NextResponse.json(
         { success: false, error: "An account with this email already exists." },
         { status: 400 }
@@ -44,24 +43,25 @@ export async function POST(request) {
 
     // Hash password and insert
     const passwordHash = hashPassword(password);
-    const [result] = await db.execute(
-      "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
-      [cleanName, cleanEmail, passwordHash]
-    );
+    const newUser = await User.create({
+      name: cleanName,
+      email: cleanEmail,
+      password_hash: passwordHash,
+    });
 
-    const user = {
-      id: result.insertId,
+    const userProfile = {
+      id: newUser._id.toString(),
       name: cleanName,
       email: cleanEmail,
     };
 
     // Create session payload and cookie
-    const sessionData = JSON.stringify(user);
+    const sessionData = JSON.stringify(userProfile);
     const sessionToken = Buffer.from(sessionData).toString("base64");
 
     const response = NextResponse.json({
       success: true,
-      user,
+      user: userProfile,
     });
 
     response.cookies.set("lms_session", sessionToken, {
