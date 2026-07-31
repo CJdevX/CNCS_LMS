@@ -19,8 +19,8 @@ export default drive;
 // ── TypeScript Interfaces ─────────────────────────────────────────────────────
 
 export interface ResolvedFileCategory {
-  category: "Documents" | "Videos" | "Images" | "Assignments" | "Others";
-  type: "PDF" | "Word" | "PowerPoint" | "Excel" | "Video" | "Image" | "Assignment" | "Other";
+  category: "Documents" | "Videos" | "Images" | "Assignments" | "Audio" | "Others";
+  type: string;
   pathParts: string[];
 }
 
@@ -79,68 +79,125 @@ export async function getOrCreateFolder(parentId: string, name: string): Promise
   return folder.data.id;
 }
 
-// ── MIME → Category/Type Mapping ─────────────────────────────────────────────
+// ── MIME / Extension → Category/Type Mapping ──────────────────────────────────
 
 /**
- * Determines the Drive folder category and type from a file's MIME type.
+ * Determines the Drive folder category and type from a file's MIME type and filename.
  * Returns { category, type, pathParts }
  */
-export function resolveFileCategory(mimeType: string, isAssignment: boolean = false): ResolvedFileCategory {
+export function resolveFileCategory(
+  mimeType: string,
+  filename: string = "",
+  isAssignment: boolean = false
+): ResolvedFileCategory {
   if (isAssignment) {
-    return { category: "Assignments", type: "Assignment", pathParts: ["Assignments"] };
+    return { category: "Assignments", type: ".assignment", pathParts: ["Assignments"] };
   }
 
-  // Videos
-  if (mimeType.startsWith("video/")) {
-    return { category: "Videos", type: "Video", pathParts: ["Videos"] };
-  }
+  const lowerName = (filename || "").toLowerCase();
+  const rawExt = lowerName.includes(".") ? lowerName.split(".").pop() || "" : "";
+  const extLabel = rawExt ? `.${rawExt}` : "";
 
-  // Images
-  if (mimeType.startsWith("image/")) {
-    return { category: "Images", type: "Image", pathParts: ["Images"] };
-  }
-
-  // Documents
-  if (mimeType === "application/pdf") {
-    return { category: "Documents", type: "PDF", pathParts: ["Documents", "PDF"] };
-  }
-
+  // 1. Videos
   if (
-    mimeType === "application/msword" ||
-    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    mimeType.startsWith("video/") ||
+    ["mp4", "mkv", "avi", "mov", "webm", "flv", "wmv", "m4v", "3gp", "ts"].includes(rawExt)
   ) {
-    return { category: "Documents", type: "Word", pathParts: ["Documents", "Word"] };
+    return { category: "Videos", type: extLabel || ".video", pathParts: ["Videos"] };
   }
 
+  // 2. Images
   if (
-    mimeType === "application/vnd.ms-powerpoint" ||
-    mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    mimeType.startsWith("image/") ||
+    ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp", "ico", "tiff", "heic"].includes(rawExt)
   ) {
-    return { category: "Documents", type: "PowerPoint", pathParts: ["Documents", "PowerPoint"] };
+    return { category: "Images", type: extLabel || ".image", pathParts: ["Images"] };
   }
 
+  // 3. Documents - PDF
+  if (mimeType === "application/pdf" || rawExt === "pdf") {
+    return { category: "Documents", type: extLabel || ".pdf", pathParts: ["Documents", "PDF"] };
+  }
+
+  // 4. Documents - Word
   if (
-    mimeType === "application/vnd.ms-excel" ||
-    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    mimeType.includes("word") ||
+    ["doc", "docx", "odt", "rtf"].includes(rawExt)
   ) {
-    return { category: "Documents", type: "Excel", pathParts: ["Documents", "Excel"] };
+    return { category: "Documents", type: extLabel || ".docx", pathParts: ["Documents", "Word"] };
   }
 
-  // Catch-all document types
-  if (mimeType.startsWith("text/") || mimeType === "application/json") {
-    return { category: "Documents", type: "Other", pathParts: ["Documents", "Others"] };
+  // 5. Documents - PowerPoint
+  if (
+    mimeType.includes("powerpoint") ||
+    mimeType.includes("presentation") ||
+    ["ppt", "pptx", "odp"].includes(rawExt)
+  ) {
+    return { category: "Documents", type: extLabel || ".pptx", pathParts: ["Documents", "PowerPoint"] };
   }
 
-  // Everything else
-  return { category: "Others", type: "Other", pathParts: ["Others"] };
+  // 6. Documents - Excel / Spreadsheets
+  if (
+    mimeType.includes("excel") ||
+    mimeType.includes("spreadsheet") ||
+    ["xls", "xlsx", "csv", "ods"].includes(rawExt)
+  ) {
+    return { category: "Documents", type: extLabel || ".xlsx", pathParts: ["Documents", "Excel"] };
+  }
+
+  // 7. Documents - JSON
+  if (mimeType === "application/json" || rawExt === "json") {
+    return { category: "Documents", type: extLabel || ".json", pathParts: ["Documents", "JSON"] };
+  }
+
+  // 8. Documents - Text / Markdown
+  if (mimeType.startsWith("text/plain") || ["txt", "text", "md", "markdown", "log"].includes(rawExt)) {
+    return { category: "Documents", type: extLabel || ".txt", pathParts: ["Documents", "Text"] };
+  }
+
+  // 9. Documents - Code / Scripts
+  if (
+    ["js", "ts", "jsx", "tsx", "py", "java", "c", "cpp", "h", "cs", "php", "sql", "sh", "xml", "yaml", "yml", "html", "css"].includes(rawExt)
+  ) {
+    return { category: "Documents", type: extLabel || ".code", pathParts: ["Documents", "Code"] };
+  }
+
+  // 10. Audio
+  if (
+    mimeType.startsWith("audio/") ||
+    ["mp3", "wav", "aac", "flac", "ogg", "m4a", "wma"].includes(rawExt)
+  ) {
+    return { category: "Audio", type: extLabel || ".mp3", pathParts: ["Audio"] };
+  }
+
+  // 11. Archives / Zip
+  if (
+    mimeType.includes("zip") ||
+    mimeType.includes("compressed") ||
+    ["zip", "rar", "7z", "tar", "gz", "bz2"].includes(rawExt)
+  ) {
+    return { category: "Others", type: extLabel || ".zip", pathParts: ["Others", "Archives"] };
+  }
+
+  // 12. Dynamic Extension Fallback (e.g. .iso, .epub, .cad, .psd, .exe)
+  if (extLabel) {
+    return { category: "Others", type: extLabel, pathParts: ["Others", rawExt.toUpperCase()] };
+  }
+
+  return { category: "Others", type: ".file", pathParts: ["Others"] };
 }
 
 /**
  * Resolves the full Drive folder path and returns the target folder ID.
  * Auto-creates any missing folders along the way.
  */
-export async function resolveDrivePath(mimeType: string, isAssignment: boolean, subject: string): Promise<string> {
-  const { pathParts } = resolveFileCategory(mimeType, isAssignment);
+export async function resolveDrivePath(
+  mimeType: string,
+  filename: string,
+  isAssignment: boolean,
+  subject: string
+): Promise<string> {
+  const { pathParts } = resolveFileCategory(mimeType, filename, isAssignment);
 
   // Start from Google Drive root
   let currentParentId = "root";

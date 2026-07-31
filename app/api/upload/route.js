@@ -24,22 +24,21 @@ export async function POST(request) {
     }
 
     const mimeType = file.type || "application/octet-stream";
-    const { category, type } = resolveFileCategory(mimeType, isAssign);
+    const { category, type } = resolveFileCategory(mimeType, file.name, isAssign);
     const fileSize = file.size || 0;
     const buffer = Buffer.from(await file.arrayBuffer());
 
     // ── Determine Storage Destination ──────────────────────────────────────────
-    let storageType = inputStorageType || "GOOGLE_DRIVE";
-    const youtubeThresholdMB = parseInt(process.env.YOUTUBE_VIDEO_SIZE_MB || "100", 10) || 100;
-    const youtubeThresholdBytes = youtubeThresholdMB * 1024 * 1024;
+    // Rule: Every video must upload to YouTube; other files upload to Google Drive.
+    const isVideoFile = mimeType.startsWith("video/") || /\.(mp4|mkv|avi|mov|webm|flv|wmv|m4v|3gp|ts)$/i.test(file.name);
+    const storageType = isVideoFile ? "YOUTUBE" : "GOOGLE_DRIVE";
 
-    const isVideoFile = mimeType.startsWith("video/") || /\.(mp4|mkv|avi|mov|webm)$/i.test(file.name);
-    if (!inputStorageType || inputStorageType === "AUTO") {
-      if (isVideoFile && fileSize >= youtubeThresholdBytes) {
-        storageType = "YOUTUBE";
-      } else {
-        storageType = "GOOGLE_DRIVE";
-      }
+    // ── Auto-Migrate DB Columns if needed ─────────────────────────────────────
+    try {
+      await db.execute("ALTER TABLE lms_files MODIFY COLUMN category VARCHAR(100) NOT NULL");
+      await db.execute("ALTER TABLE lms_files MODIFY COLUMN type VARCHAR(100) NOT NULL");
+    } catch (e) {
+      // Ignore if already modified or unprivileged
     }
 
     // ── Get or create subject_id from DB ─────────────────────────────────────
@@ -97,7 +96,7 @@ export async function POST(request) {
 
     } else {
       // ── Step 1: Resolve Drive path & upload to Google Drive ────────────────
-      const targetFolderId = await resolveDrivePath(mimeType, isAssign, subject);
+      const targetFolderId = await resolveDrivePath(mimeType, file.name, isAssign, subject);
 
       const driveResponse = await drive.files.create({
         requestBody: {

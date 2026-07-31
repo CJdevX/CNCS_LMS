@@ -4,7 +4,7 @@
 -- ============================================================
 
 -- 1. Users table for friends login
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
   id            INT PRIMARY KEY AUTO_INCREMENT,
   name          VARCHAR(100) NOT NULL,
   email         VARCHAR(150) NOT NULL UNIQUE,
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- 2. Subjects (dynamic — can add new ones from the UI)
-CREATE TABLE IF NOT EXISTS subjects (
+CREATE TABLE subjects (
   id         INT PRIMARY KEY AUTO_INCREMENT,
   name       VARCHAR(100) NOT NULL UNIQUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -29,13 +29,13 @@ INSERT IGNORE INTO subjects (name) VALUES
   ('Operating Systems');
 
 -- 3. Core files table
-CREATE TABLE IF NOT EXISTS lms_files (
+CREATE TABLE lms_files (
   id              INT PRIMARY KEY AUTO_INCREMENT,
   drive_file_id   VARCHAR(255)  NOT NULL,
   drive_url       VARCHAR(512),
   name            VARCHAR(255)  NOT NULL,
-  category        ENUM('Documents','Videos','Images','Assignments','Others') NOT NULL,
-  type            ENUM('PDF','Word','PowerPoint','Excel','Video','Image','Assignment','Other') NOT NULL,
+  category        VARCHAR(100) NOT NULL,
+  type            VARCHAR(10) NOT NULL,
   subject_id      INT,
   uploaded_by     VARCHAR(255),          -- Email of uploader
   size_bytes      BIGINT DEFAULT 0,
@@ -45,11 +45,6 @@ CREATE TABLE IF NOT EXISTS lms_files (
   created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE SET NULL
 );
-
--- Migration for existing lms_files tables
-ALTER TABLE lms_files ADD COLUMN IF NOT EXISTS storage_type ENUM('GOOGLE_DRIVE','YOUTUBE') NOT NULL DEFAULT 'GOOGLE_DRIVE';
-ALTER TABLE lms_files ADD COLUMN IF NOT EXISTS google_drive_id VARCHAR(255) NULL;
-ALTER TABLE lms_files ADD COLUMN IF NOT EXISTS youtube_url TEXT NULL;
 
 -- Indexes for fast filtering
 CREATE INDEX idx_files_type       ON lms_files(type);

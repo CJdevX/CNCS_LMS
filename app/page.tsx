@@ -54,6 +54,7 @@ const SIDEBAR_ITEMS: SidebarCategoryItem[] = [
   { id: "excel",       label: "Excel Sheets", icon: "📈", category: "Documents",   type: "Excel" },
   { id: "videos",      label: "Videos",       icon: "🎬", category: "Videos" },
   { id: "images",      label: "Images",       icon: "🖼️", category: "Images" },
+  { id: "audio",       label: "Audio",        icon: "🎵", category: "Audio" },
   { id: "assignments", label: "Assignments",  icon: "📋", category: "Assignments" },
   { id: "others",      label: "Others",       icon: "📁", category: "Others" },
 ];
@@ -67,6 +68,13 @@ const TYPE_COLORS: Record<string, { bg: string; text: string; icon: string }> = 
   Video:       { bg: "#ede9fe", text: "#7c3aed", icon: "🎬" },
   Image:       { bg: "#fce7f3", text: "#be185d", icon: "🖼️" },
   Assignment:  { bg: "#fef9c3", text: "#a16207", icon: "📋" },
+  JSON:        { bg: "#fef3c7", text: "#d97706", icon: "⚙️" },
+  Text:        { bg: "#e0f2fe", text: "#0369a1", icon: "📜" },
+  Audio:       { bg: "#f3e8ff", text: "#7e22ce", icon: "🎵" },
+  Archive:     { bg: "#ffedd5", text: "#9a3412", icon: "📦" },
+  Code:        { bg: "#e0e7ff", text: "#4338ca", icon: "💻" },
+  Python:      { bg: "#dcfce7", text: "#166534", icon: "🐍" },
+  SQL:         { bg: "#cff4fc", text: "#055160", icon: "🗄️" },
   Other:       { bg: "#f1f5f9", text: "#475569", icon: "📁" },
 };
 
@@ -94,7 +102,7 @@ function FileCard({
   onDeleteSuccess?: () => void;
 }) {
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
-  const style = TYPE_COLORS[file.type] || TYPE_COLORS.Other;
+  const style = TYPE_COLORS[file.type] || { bg: "#e2e8f0", text: "#334155", icon: "📄" };
 
   const isOwner =
     currentUser &&

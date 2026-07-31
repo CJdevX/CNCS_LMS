@@ -11,6 +11,8 @@ export interface Subject {
 export interface DetectedInfo {
   category: string;
   type: string;
+  typeLabel: string;
+  pathParts: string[];
 }
 
 export interface UploadModalProps {
@@ -22,10 +24,42 @@ export interface UploadModalProps {
 
 export type StorageType = "GOOGLE_DRIVE" | "YOUTUBE";
 
-const YOUTUBE_THRESHOLD_MB = parseInt(process.env.YOUTUBE_VIDEO_SIZE_MB || "100", 10) || 100;
-const YOUTUBE_SIZE_THRESHOLD_BYTES = YOUTUBE_THRESHOLD_MB * 1024 * 1024;
+
 
 const TYPE_COLORS: Record<string, { bg: string; text: string; icon: string }> = {
+  ".pdf":        { bg: "#fee2e2", text: "#b91c1c", icon: "📄" },
+  ".doc":        { bg: "#dbeafe", text: "#1d4ed8", icon: "📝" },
+  ".docx":       { bg: "#dbeafe", text: "#1d4ed8", icon: "📝" },
+  ".ppt":        { bg: "#ffedd5", text: "#c2410c", icon: "📊" },
+  ".pptx":       { bg: "#ffedd5", text: "#c2410c", icon: "📊" },
+  ".xls":        { bg: "#dcfce7", text: "#15803d", icon: "📈" },
+  ".xlsx":       { bg: "#dcfce7", text: "#15803d", icon: "📈" },
+  ".mp4":        { bg: "#ede9fe", text: "#7c3aed", icon: "🎬" },
+  ".mkv":        { bg: "#ede9fe", text: "#7c3aed", icon: "🎬" },
+  ".avi":        { bg: "#ede9fe", text: "#7c3aed", icon: "🎬" },
+  ".mov":        { bg: "#ede9fe", text: "#7c3aed", icon: "🎬" },
+  ".webm":       { bg: "#ede9fe", text: "#7c3aed", icon: "🎬" },
+  ".png":        { bg: "#fce7f3", text: "#be185d", icon: "🖼️" },
+  ".jpg":        { bg: "#fce7f3", text: "#be185d", icon: "🖼️" },
+  ".jpeg":       { bg: "#fce7f3", text: "#be185d", icon: "🖼️" },
+  ".webp":       { bg: "#fce7f3", text: "#be185d", icon: "🖼️" },
+  ".gif":        { bg: "#fce7f3", text: "#be185d", icon: "🖼️" },
+  ".svg":        { bg: "#fce7f3", text: "#be185d", icon: "🖼️" },
+  ".mp3":        { bg: "#f3e8ff", text: "#7e22ce", icon: "🎵" },
+  ".wav":        { bg: "#f3e8ff", text: "#7e22ce", icon: "🎵" },
+  ".aac":        { bg: "#f3e8ff", text: "#7e22ce", icon: "🎵" },
+  ".flac":       { bg: "#f3e8ff", text: "#7e22ce", icon: "🎵" },
+  ".zip":        { bg: "#ffedd5", text: "#9a3412", icon: "📦" },
+  ".rar":        { bg: "#ffedd5", text: "#9a3412", icon: "📦" },
+  ".7z":         { bg: "#ffedd5", text: "#9a3412", icon: "📦" },
+  ".json":       { bg: "#fef3c7", text: "#d97706", icon: "⚙️" },
+  ".txt":        { bg: "#e0f2fe", text: "#0369a1", icon: "📜" },
+  ".md":         { bg: "#e0f2fe", text: "#0369a1", icon: "📜" },
+  ".py":         { bg: "#dcfce7", text: "#166534", icon: "🐍" },
+  ".js":         { bg: "#e0e7ff", text: "#4338ca", icon: "💻" },
+  ".ts":         { bg: "#e0e7ff", text: "#4338ca", icon: "💻" },
+  ".sql":        { bg: "#cff4fc", text: "#055160", icon: "🗄️" },
+
   PDF:         { bg: "#fee2e2", text: "#b91c1c", icon: "📄" },
   Word:        { bg: "#dbeafe", text: "#1d4ed8", icon: "📝" },
   PowerPoint:  { bg: "#ffedd5", text: "#c2410c", icon: "📊" },
@@ -33,6 +67,13 @@ const TYPE_COLORS: Record<string, { bg: string; text: string; icon: string }> = 
   Video:       { bg: "#ede9fe", text: "#7c3aed", icon: "🎬" },
   Image:       { bg: "#fce7f3", text: "#be185d", icon: "🖼️" },
   Assignment:  { bg: "#fef9c3", text: "#a16207", icon: "📋" },
+  JSON:        { bg: "#fef3c7", text: "#d97706", icon: "⚙️" },
+  Text:        { bg: "#e0f2fe", text: "#0369a1", icon: "📜" },
+  Audio:       { bg: "#f3e8ff", text: "#7e22ce", icon: "🎵" },
+  Archive:     { bg: "#ffedd5", text: "#9a3412", icon: "📦" },
+  Code:        { bg: "#e0e7ff", text: "#4338ca", icon: "💻" },
+  Python:      { bg: "#dcfce7", text: "#166534", icon: "🐍" },
+  SQL:         { bg: "#cff4fc", text: "#055160", icon: "🗄️" },
   Other:       { bg: "#f1f5f9", text: "#475569", icon: "📁" },
 };
 
@@ -55,28 +96,98 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
   const fileRef                         = useRef<HTMLInputElement>(null);
 
   function detectType(mimeType: string, filename: string, isAssignment: boolean): DetectedInfo {
-    if (isAssignment) return { category: "Assignments", type: "Assignment" };
-    const lowerName = filename.toLowerCase();
-    
-    if (mimeType.startsWith("video/") || lowerName.endsWith(".mp4") || lowerName.endsWith(".mkv") || lowerName.endsWith(".avi") || lowerName.endsWith(".mov")) {
-      return { category: "Videos", type: "Video" };
+    if (isAssignment) {
+      return { category: "Assignments", type: ".assignment", typeLabel: "Assignment File", pathParts: ["Assignments"] };
     }
-    if (mimeType.startsWith("image/") || lowerName.endsWith(".png") || lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || lowerName.endsWith(".webp")) {
-      return { category: "Images", type: "Image" };
+
+    const lowerName = (filename || "").toLowerCase();
+    const rawExt = lowerName.includes(".") ? lowerName.split(".").pop() || "" : "";
+    const extLabel = rawExt ? `.${rawExt}` : "";
+
+    // 1. Videos -> YouTube
+    if (
+      mimeType.startsWith("video/") ||
+      ["mp4", "mkv", "avi", "mov", "webm", "flv", "wmv", "m4v", "3gp", "ts"].includes(rawExt)
+    ) {
+      return { category: "Videos", type: extLabel || ".mp4", typeLabel: "Video File", pathParts: ["YouTube"] };
     }
-    if (mimeType === "application/pdf" || lowerName.endsWith(".pdf")) {
-      return { category: "Documents", type: "PDF" };
+
+    // 2. Images -> Google Drive
+    if (
+      mimeType.startsWith("image/") ||
+      ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp", "ico", "tiff", "heic"].includes(rawExt)
+    ) {
+      return { category: "Images", type: extLabel || ".image", typeLabel: "Image File", pathParts: ["Images"] };
     }
-    if (mimeType.includes("word") || lowerName.endsWith(".doc") || lowerName.endsWith(".docx")) {
-      return { category: "Documents", type: "Word" };
+
+    // 3. Documents - PDF
+    if (mimeType === "application/pdf" || rawExt === "pdf") {
+      return { category: "Documents", type: extLabel || ".pdf", typeLabel: "PDF Document", pathParts: ["Documents", "PDF"] };
     }
-    if (mimeType.includes("powerpoint") || mimeType.includes("presentation") || lowerName.endsWith(".ppt") || lowerName.endsWith(".pptx")) {
-      return { category: "Documents", type: "PowerPoint" };
+
+    // 4. Documents - Word
+    if (mimeType.includes("word") || ["doc", "docx", "odt", "rtf"].includes(rawExt)) {
+      return { category: "Documents", type: extLabel || ".docx", typeLabel: "Word Document", pathParts: ["Documents", "Word"] };
     }
-    if (mimeType.includes("excel") || mimeType.includes("spreadsheet") || lowerName.endsWith(".xls") || lowerName.endsWith(".xlsx")) {
-      return { category: "Documents", type: "Excel" };
+
+    // 5. Documents - PowerPoint
+    if (
+      mimeType.includes("powerpoint") ||
+      mimeType.includes("presentation") ||
+      ["ppt", "pptx", "odp"].includes(rawExt)
+    ) {
+      return { category: "Documents", type: extLabel || ".pptx", typeLabel: "PowerPoint Presentation", pathParts: ["Documents", "PowerPoint"] };
     }
-    return { category: "Others", type: "Other" };
+
+    // 6. Documents - Excel / Spreadsheets
+    if (
+      mimeType.includes("excel") ||
+      mimeType.includes("spreadsheet") ||
+      ["xls", "xlsx", "csv", "ods"].includes(rawExt)
+    ) {
+      return { category: "Documents", type: extLabel || ".xlsx", typeLabel: "Excel Spreadsheet", pathParts: ["Documents", "Excel"] };
+    }
+
+    // 7. Documents - JSON
+    if (mimeType === "application/json" || rawExt === "json") {
+      return { category: "Documents", type: extLabel || ".json", typeLabel: "JSON File", pathParts: ["Documents", "JSON"] };
+    }
+
+    // 8. Documents - Text / Markdown
+    if (mimeType.startsWith("text/plain") || ["txt", "text", "md", "markdown", "log"].includes(rawExt)) {
+      return { category: "Documents", type: extLabel || ".txt", typeLabel: "Text File", pathParts: ["Documents", "Text"] };
+    }
+
+    // 9. Documents - Code / Scripts
+    if (
+      ["js", "ts", "jsx", "tsx", "py", "java", "c", "cpp", "h", "cs", "php", "sql", "sh", "xml", "yaml", "yml", "html", "css"].includes(rawExt)
+    ) {
+      return { category: "Documents", type: extLabel || ".code", typeLabel: "Code Script", pathParts: ["Documents", "Code"] };
+    }
+
+    // 10. Audio
+    if (
+      mimeType.startsWith("audio/") ||
+      ["mp3", "wav", "aac", "flac", "ogg", "m4a", "wma"].includes(rawExt)
+    ) {
+      return { category: "Audio", type: extLabel || ".mp3", typeLabel: "Audio File", pathParts: ["Audio"] };
+    }
+
+    // 11. Archives / Zip
+    if (
+      mimeType.includes("zip") ||
+      mimeType.includes("compressed") ||
+      ["zip", "rar", "7z", "tar", "gz", "bz2"].includes(rawExt)
+    ) {
+      return { category: "Others", type: extLabel || ".zip", typeLabel: "Archive File", pathParts: ["Others", "Archives"] };
+    }
+
+    // 12. Dynamic Extension Fallback
+    if (extLabel) {
+      return { category: "Others", type: extLabel, typeLabel: `${rawExt.toUpperCase()} File`, pathParts: ["Others", rawExt.toUpperCase()] };
+    }
+
+    return { category: "Others", type: ".file", typeLabel: "File", pathParts: ["Others"] };
   }
 
   function handleFileSelect(f: File) {
@@ -85,9 +196,9 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
     setDetected(info);
     setError("");
 
-    // Auto-routing logic based on video type and file size threshold (>= 100 MB)
-    const isVideo = f.type.startsWith("video/") || /\.(mp4|mkv|avi|mov)$/i.test(f.name);
-    if (isVideo && f.size >= YOUTUBE_SIZE_THRESHOLD_BYTES) {
+    // Auto-routing logic: Every video file uploads to YouTube. Other files upload to Google Drive.
+    const isVideo = f.type.startsWith("video/") || /\.(mp4|mkv|avi|mov|webm|flv|wmv|m4v|3gp|ts)$/i.test(f.name);
+    if (isVideo) {
       setStorageType("YOUTUBE");
       setIsAutoRouted(true);
     } else {
@@ -122,6 +233,16 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
     const checked = e.target.checked;
     setIsAssign(checked);
     if (file) setDetected(detectType(file.type, file.name, checked));
+  }
+
+  function get1stLevelDestinationFolder(
+    category: string,
+    storage: StorageType
+  ): string {
+    if (storage === "YOUTUBE") {
+      return "YouTube";
+    }
+    return category;
   }
 
   function formatFileSize(bytes: number): string {
@@ -196,7 +317,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
     xhr.send(fd);
   }
 
-  const style = detected ? (TYPE_COLORS[detected.type] || TYPE_COLORS.Other) : null;
+  const style = detected ? (TYPE_COLORS[detected.type.toLowerCase()] || TYPE_COLORS[detected.type] || { bg: "#e2e8f0", text: "#334155", icon: "📄" }) : null;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -242,64 +363,81 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
             <input ref={fileRef} type="file" hidden onChange={handleFileChange} disabled={loading} />
           </div>
 
-          {detected && style && (
-            <div className="detected-info">
-              <div className="detected-pill" style={{ background: style.bg, color: style.text }}>
-                {style.icon} {detected.type}
-              </div>
-              <div className="detected-pill detected-cat">
-                📂 {detected.category}
-              </div>
-            </div>
-          )}
-
-          {/* Storage Destination Indicator & Selector */}
-          {file && (
+          {/* File Type & Destination Saved Folder Info Box */}
+          {file && detected && style && (
             <div
               style={{
                 background: storageType === "YOUTUBE" ? "rgba(239, 68, 68, 0.08)" : "rgba(99, 102, 241, 0.08)",
                 border: storageType === "YOUTUBE" ? "1px solid rgba(239, 68, 68, 0.25)" : "1px solid rgba(99, 102, 241, 0.25)",
                 borderRadius: "var(--radius-sm)",
-                padding: "10px 14px",
-                margin: "6px 0",
+                padding: "14px 16px",
+                margin: "10px 0",
                 display: "flex",
                 flexDirection: "column",
-                gap: "6px",
+                gap: "10px",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.82rem" }}>
-                <span style={{ fontWeight: "600", color: storageType === "YOUTUBE" ? "#f87171" : "#818cf8" }}>
-                  {storageType === "YOUTUBE" ? "🎥 Destination: YouTube" : "☁️ Destination: Google Drive"}
-                </span>
-                {isAutoRouted && (
-                  <span style={{ fontSize: "0.72rem", background: "rgba(239, 68, 68, 0.2)", color: "#fca5a5", padding: "2px 8px", borderRadius: "999px", fontWeight: "500" }}>
-                    ⚡ Auto-routed (&gt;={YOUTUBE_THRESHOLD_MB}MB Video)
+              {/* Row 1: File Type & Target Storage */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.83rem", fontWeight: "600", color: "var(--text-primary)" }}>
+                  <span>Detected File Type:</span>
+                  <span
+                    style={{
+                      background: style.bg,
+                      color: style.text,
+                      padding: "3px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.78rem",
+                      fontWeight: "700",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
+                    }}
+                  >
+                    {style.icon} {detected.typeLabel || detected.type} ({detected.type})
                   </span>
-                )}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" }}>
-                <label style={{ fontSize: "0.75rem", color: "var(--text-muted)", flexShrink: 0 }}>Storage Target:</label>
-                <select
-                  value={storageType}
-                  onChange={(e) => {
-                    setStorageType(e.target.value as StorageType);
-                    setIsAutoRouted(false);
-                  }}
-                  disabled={loading}
+                </div>
+                <span
                   style={{
-                    flex: 1,
-                    padding: "4px 8px",
-                    fontSize: "0.78rem",
-                    borderRadius: "6px",
-                    background: "var(--bg-input)",
-                    color: "var(--text-primary)",
-                    border: "1px solid var(--border)",
-                    cursor: loading ? "not-allowed" : "pointer",
+                    fontSize: "0.75rem",
+                    background: storageType === "YOUTUBE" ? "rgba(239, 68, 68, 0.2)" : "rgba(99, 102, 241, 0.2)",
+                    color: storageType === "YOUTUBE" ? "#fca5a5" : "#a5b4fc",
+                    padding: "4px 10px",
+                    borderRadius: "999px",
+                    fontWeight: "600",
                   }}
                 >
-                  <option value="GOOGLE_DRIVE">Google Drive (Default)</option>
-                  <option value="YOUTUBE">YouTube (Saves Drive Space)</option>
-                </select>
+                  {storageType === "YOUTUBE" ? "🎥 YouTube Upload" : "☁️ Google Drive Upload"}
+                </span>
+              </div>
+
+              {/* Row 2: Saved Folder Name / Path */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.82rem", color: "var(--text-secondary)" }}>
+                <span style={{ fontWeight: "600", color: "var(--text-primary)", whiteSpace: "nowrap" }}>Saved Folder:</span>
+                <span
+                  style={{
+                    background: "rgba(0, 0, 0, 0.25)",
+                    border: "1px solid var(--border)",
+                    padding: "3px 10px",
+                    borderRadius: "6px",
+                    fontFamily: "monospace",
+                    fontSize: "0.8rem",
+                    color: storageType === "YOUTUBE" ? "#f87171" : "#818cf8",
+                    wordBreak: "break-all",
+                  }}
+                >
+                  📁 {storageType === "YOUTUBE"
+                    ? `YouTube / ${newSubject.trim() || subject.trim() || "[Subject Folder]"}`
+                    : `${(detected.pathParts || [detected.category]).join(" / ")} / ${newSubject.trim() || subject.trim() || "[Subject Folder]"}`
+                  }
+                </span>
+              </div>
+
+              {/* Row 3: Automatic Storage System Notice */}
+              <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontStyle: "italic", borderTop: "1px dashed rgba(255,255,255,0.1)", paddingTop: "6px" }}>
+                {storageType === "YOUTUBE"
+                  ? "⚡ Auto-detected video file: Every video is automatically uploaded to YouTube."
+                  : "⚡ Auto-detected non-video file: All documents and other files are uploaded to Google Drive."}
               </div>
             </div>
           )}
