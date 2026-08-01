@@ -287,50 +287,59 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
 
       const uploadUrl = initData.uploadUrl;
 
-      // Step 2: Upload file binary directly from browser to Google/YouTube uploadUrl
+      // Step 2: Upload file in 4 MB chunks to /api/upload/chunk to bypass CORS and Vercel payload limits
+      const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB per chunk
+      const totalSize = file.size;
+      let offset = 0;
+      let uploadedFileId = "";
+
       setStatusText(storageType === "YOUTUBE" ? "Uploading video to YouTube…" : "Uploading file to Google Drive…");
 
-      const uploadedFileId = await new Promise<string>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", uploadUrl, true);
-        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      while (offset < totalSize) {
+        const chunkEnd = Math.min(offset + CHUNK_SIZE, totalSize);
+        const chunkSlice = file.slice(offset, chunkEnd);
 
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const percent = Math.round((event.loaded / event.total) * 100);
-            setProgress(percent);
-            if (percent < 100) {
-              setStatusText(`Uploading file… ${percent}%`);
-            } else {
-              setStatusText(
-                storageType === "YOUTUBE"
-                  ? "Processing video on YouTube…"
-                  : "Finalizing file on Google Drive…"
-              );
-            }
-          }
-        };
+        const chunkFd = new FormData();
+        chunkFd.append("chunk", chunkSlice);
+        chunkFd.append("uploadUrl", uploadUrl);
+        chunkFd.append("start", offset.toString());
+        chunkFd.append("end", (chunkEnd - 1).toString());
+        chunkFd.append("total", totalSize.toString());
+        chunkFd.append("mimeType", file.type || "application/octet-stream");
 
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const resData = JSON.parse(xhr.responseText || "{}");
-              if (resData.id) {
-                resolve(resData.id);
-              } else {
-                reject(new Error("Upload completed but no file ID was returned."));
-              }
-            } catch (err) {
-              reject(new Error("Failed to parse response from upload server."));
-            }
-          } else {
-            reject(new Error(`Direct upload failed with status ${xhr.status}`));
-          }
-        };
+        const chunkRes = await fetch("/api/upload/chunk", {
+          method: "POST",
+          body: chunkFd,
+        });
 
-        xhr.onerror = () => reject(new Error("Network error occurred during direct file upload."));
-        xhr.send(file);
-      });
+        const chunkData = await chunkRes.json();
+        if (!chunkRes.ok || !chunkData.success) {
+          throw new Error(chunkData.error || chunkData.message || "Error uploading file chunk.");
+        }
+
+        offset = chunkEnd;
+        const percent = Math.round((offset / totalSize) * 100);
+        setProgress(percent);
+
+        if (percent < 100) {
+          setStatusText(`Uploading file… ${percent}%`);
+        } else {
+          setStatusText(
+            storageType === "YOUTUBE"
+              ? "Processing video on YouTube…"
+              : "Finalizing file on Google Drive…"
+          );
+        }
+
+        if (chunkData.status === "complete" && chunkData.fileId) {
+          uploadedFileId = chunkData.fileId;
+          break;
+        }
+      }
+
+      if (!uploadedFileId) {
+        throw new Error("Upload completed but no file ID was obtained.");
+      }
 
       // Step 3: Record upload completion in MongoDB
       setStatusText("Saving upload details…");
