@@ -486,8 +486,7 @@ body {
 .field-group label { font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); }
 
 .field-group select,
-.field-group input[type="text"],
-.field-group input[type="email"] {
+.field-group input {
   padding: 9px 12px;
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -497,6 +496,7 @@ body {
   font-family: inherit;
   outline: none;
   transition: border-color 0.2s;
+  width: 100%;
 }
 .field-group select:focus,
 .field-group input:focus { border-color: var(--border-focus); }
