@@ -259,62 +259,112 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
 
     setLoading(true);
     setProgress(0);
-    setStatusText(storageType === "YOUTUBE" ? "Preparing YouTube video upload…" : "Preparing Drive file upload…");
+    setStatusText(storageType === "YOUTUBE" ? "Initializing YouTube upload…" : "Initializing Drive upload…");
     setError("");
 
-    const fd = new FormData();
-    fd.append("file",         file);
-    fd.append("subject",      newSubject.trim() || subject);
-    fd.append("isAssignment", isAssign.toString());
-    fd.append("uploadedBy",   uploadedBy.trim());
-    fd.append("sharedWith",   sharedWith.trim());
-    fd.append("storageType",  storageType);
+    const targetSubject = newSubject.trim() || subject;
 
-    // Use XMLHttpRequest for real-time progress events
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/upload", true);
+    try {
+      // Step 1: Request direct upload session URL from Next.js API (Lightweight JSON)
+      const initRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          mimeType: file.type || "application/octet-stream",
+          fileSize: file.size,
+          subject: targetSubject,
+          isAssignment: isAssign,
+          uploadedBy: uploadedBy.trim(),
+          storageType: storageType,
+        }),
+      });
 
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        const percent = Math.round((event.loaded / event.total) * 100);
-        setProgress(percent);
-        if (percent < 100) {
-          setStatusText(`Uploading file… ${percent}%`);
-        } else {
-          setStatusText(
-            storageType === "YOUTUBE"
-              ? "Processing & saving video to YouTube…"
-              : "Uploading & saving to Google Drive…"
-          );
-        }
+      const initData = await initRes.json();
+      if (!initRes.ok || !initData.success || !initData.uploadUrl) {
+        throw new Error(initData.error || initData.message || "Failed to initialize upload session.");
       }
-    };
 
-    xhr.onload = () => {
-      setLoading(false);
-      try {
-        const data = JSON.parse(xhr.responseText);
-        if (xhr.status >= 200 && xhr.status < 300 && data.success) {
-          setProgress(100);
-          setStatusText("Upload complete!");
-          setTimeout(() => {
-            onSuccess();
-            onClose();
-          }, 400);
-        } else {
-          setError(data.error || data.message || "Upload failed.");
-        }
-      } catch (err) {
-        setError("Invalid response from server.");
+      const uploadUrl = initData.uploadUrl;
+
+      // Step 2: Upload file binary directly from browser to Google/YouTube uploadUrl
+      setStatusText(storageType === "YOUTUBE" ? "Uploading video to YouTube…" : "Uploading file to Google Drive…");
+
+      const uploadedFileId = await new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl, true);
+        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percent = Math.round((event.loaded / event.total) * 100);
+            setProgress(percent);
+            if (percent < 100) {
+              setStatusText(`Uploading file… ${percent}%`);
+            } else {
+              setStatusText(
+                storageType === "YOUTUBE"
+                  ? "Processing video on YouTube…"
+                  : "Finalizing file on Google Drive…"
+              );
+            }
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const resData = JSON.parse(xhr.responseText || "{}");
+              if (resData.id) {
+                resolve(resData.id);
+              } else {
+                reject(new Error("Upload completed but no file ID was returned."));
+              }
+            } catch (err) {
+              reject(new Error("Failed to parse response from upload server."));
+            }
+          } else {
+            reject(new Error(`Direct upload failed with status ${xhr.status}`));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("Network error occurred during direct file upload."));
+        xhr.send(file);
+      });
+
+      // Step 3: Record upload completion in MongoDB
+      setStatusText("Saving upload details…");
+      const completeRes = await fetch("/api/upload/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileId: uploadedFileId,
+          filename: file.name,
+          mimeType: file.type || "application/octet-stream",
+          fileSize: file.size,
+          subject: targetSubject,
+          isAssignment: isAssign,
+          uploadedBy: uploadedBy.trim(),
+          storageType: storageType,
+        }),
+      });
+
+      const completeData = await completeRes.json();
+      if (!completeRes.ok || !completeData.success) {
+        throw new Error(completeData.error || completeData.message || "Failed to save file metadata.");
       }
-    };
 
-    xhr.onerror = () => {
+      setProgress(100);
+      setStatusText("Upload complete!");
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+      }, 400);
+
+    } catch (err: any) {
       setLoading(false);
-      setError("Network error occurred during upload.");
-    };
-
-    xhr.send(fd);
+      setError(err.message || "An error occurred during upload.");
+    }
   }
 
   const style = detected ? (TYPE_COLORS[detected.type.toLowerCase()] || TYPE_COLORS[detected.type] || { bg: "#e2e8f0", text: "#334155", icon: "📄" }) : null;

@@ -112,6 +112,76 @@ export function extractYouTubeVideoId(input: string): string {
 }
 
 /**
+ * Options for creating a YouTube resumable upload session.
+ */
+export interface CreateResumableSessionOptions {
+    title: string;
+    description?: string;
+    mimeType: string;
+    fileSize: number;
+    privacyStatus?: "public" | "private" | "unlisted";
+    tags?: string[];
+}
+
+/**
+ * Initiates a YouTube Resumable Upload session.
+ * Returns the Google resumable upload location URL that the client browser can PUT binary content directly to.
+ */
+export async function createYouTubeResumableSession(options: CreateResumableSessionOptions): Promise<string> {
+    const {
+        title,
+        description = "",
+        mimeType,
+        fileSize,
+        privacyStatus = "unlisted",
+        tags = []
+    } = options;
+
+    const tokenResponse = await oauth2Client.getAccessToken();
+    const accessToken = tokenResponse.token;
+    if (!accessToken) {
+        throw new Error("Failed to retrieve Google OAuth access token for YouTube upload.");
+    }
+
+    const response = await fetch(
+        "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+        {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${accessToken}`,
+                "Content-Type": "application/json; charset=UTF-8",
+                "X-Upload-Content-Type": mimeType || "video/mp4",
+                "X-Upload-Content-Length": fileSize ? fileSize.toString() : "0",
+            },
+            body: JSON.stringify({
+                snippet: {
+                    title,
+                    description,
+                    tags,
+                    categoryId: "27", // Education category
+                },
+                status: {
+                    privacyStatus,
+                    selfDeclaredMadeForKids: false,
+                },
+            }),
+        }
+    );
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`YouTube resumable session initialization failed (${response.status}): ${errText}`);
+    }
+
+    const uploadUrl = response.headers.get("location");
+    if (!uploadUrl) {
+        throw new Error("YouTube API did not return a location header for resumable upload session.");
+    }
+
+    return uploadUrl;
+}
+
+/**
  * Deletes a video from YouTube using YouTube Data API v3.
  * 
  * @param videoIdOrUrl The ID or URL of the YouTube video to delete.

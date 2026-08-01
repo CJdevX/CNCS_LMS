@@ -226,3 +226,63 @@ export async function getDriveStorageQuota(): Promise<DriveAboutData | null> {
     return null;
   }
 }
+
+/**
+ * Initiates a Google Drive Resumable Upload session.
+ * Returns { uploadUrl, targetFolderId } where uploadUrl is the session URL for direct binary PUT.
+ */
+export async function createDriveResumableSession(
+  mimeType: string,
+  filename: string,
+  fileSize: number,
+  isAssignment: boolean,
+  subject: string
+): Promise<{ uploadUrl: string; targetFolderId: string }> {
+  const targetFolderId = await resolveDrivePath(mimeType, filename, isAssignment, subject);
+
+  const tokenResponse = await oauth2Client.getAccessToken();
+  const accessToken = tokenResponse.token;
+  if (!accessToken) {
+    throw new Error("Failed to retrieve Google OAuth access token for Drive upload.");
+  }
+
+  const response = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Upload-Content-Type": mimeType || "application/octet-stream",
+        "X-Upload-Content-Length": fileSize ? fileSize.toString() : "0",
+      },
+      body: JSON.stringify({
+        name: filename,
+        parents: [targetFolderId],
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Drive resumable session initialization failed (${response.status}): ${errText}`);
+  }
+
+  const uploadUrl = response.headers.get("location");
+  if (!uploadUrl) {
+    throw new Error("Google Drive API did not return a location header for resumable upload session.");
+  }
+
+  return { uploadUrl, targetFolderId };
+}
+
+/**
+ * Sets public read permission on a Google Drive file.
+ */
+export async function makeDriveFilePublic(fileId: string): Promise<void> {
+  await drive.permissions.create({
+    fileId,
+    requestBody: { role: "reader", type: "anyone" },
+  });
+}
+
