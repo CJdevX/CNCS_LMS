@@ -193,7 +193,6 @@ GOOGLE_REFRESH_TOKEN=""
 
 # YouTube Upload Settings
 YOUTUBE_PRIVACY_STATUS="unlisted"
-YOUTUBE_VIDEO_SIZE_MB=10     # Adjest Size Limit
 ```
 ---
 
