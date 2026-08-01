@@ -15,7 +15,7 @@ This platform provides automated dual-cloud file routing: video lectures are hos
   - [Step 1: Clone the Repository](#step-1-clone-the-repository)
   - [Step 2: Install Dependencies](#step-2-install-dependencies)
   - [Step 3: Setup MongoDB Database](#step-3-setup-mongodb-database)
-  - [Step 4: Create Gmail & YouTube Channel](#step-4-create-gmail--youtube-channel)
+  - [Step 4: Create a Google Account & YouTube Channel](#step-4-create-a-google-account--youtube-channel)
   - [Step 5: Setup Google Cloud Console Credentials](#step-5-setup-google-cloud-console-credentials)
   - [Step 6: Configure Environment Variables (`.env`)](#step-6-configure-environment-variables-env)
   - [Step 7: Generate Google OAuth Refresh Token](#step-7-generate-google-oauth-refresh-token)
@@ -130,7 +130,7 @@ MONGODB_DBNAME="cncs_lms"
 
 ---
 
-### Step 4: Create a Google Account and YouTube Channel
+### Step 4: Create a Google Account & YouTube Channel
 
 1. Use or create a Google account at [accounts.google.com](https://accounts.google.com).
 2. Create a YouTube channel linked to that Google account.
@@ -148,7 +148,7 @@ MONGODB_DBNAME="cncs_lms"
 To enable Google Drive storage and YouTube uploads, configure Google Cloud Console and create OAuth credentials.
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create or select a project, then name it `CNCS LMS`.
+2. Create or select a project, then name it `CNCS-LMS`.
 3. Enable the required APIs:
    - **Google Drive API**
    - **YouTube Data API v3**
@@ -159,8 +159,12 @@ To enable Google Drive storage and YouTube uploads, configure Google Cloud Conso
 5. Open **Credentials** and create a new credential:
    - Choose **OAuth client ID**
    - Select **Web application**
-   - Give it a name such as `CNCS LMS Local`
-   - Add the redirect URI:
+   - Give it a name such as `CNCS_LMS`
+   - Add the Authorized JavaScript origins:
+```text
+http://localhost:3000
+```
+   - Add the Authorized redirect URIs:
 
 ```text
 http://localhost:3000/api/auth/google/callback
@@ -173,18 +177,17 @@ http://localhost:3000/api/auth/google/callback
 
 ### Step 6: Configure Environment Variables (`.env`)
 
-Create a `.env` file in the root directory of the project:
-
-```bash
-touch .env
-```
-
-Paste the following variables into your `.env` file and replace the placeholder values with your actual credentials:
+Create a `.env` file Paste the following variables into your `.env` file and replace the placeholder values with your actual credentials:
 
 ```env
 # MongoDB Configuration
-MONGODB_URI="mongodb://localhost:27017/cncs_lms"
-MONGODB_DBNAME="cncs_lms"
+MONGODB_URI="Your MongoDB URI"
+MONGODB_DBNAME="Your MongoDB Database Name"
+
+```
+# YouTube Upload Settings
+YOUTUBE_PRIVACY_STATUS="unlisted"
+YOUTUBE_VIDEO_SIZE_MB=10
 
 # Google OAuth Credentials
 GOOGLE_CLIENT_ID="your_google_client_id.apps.googleusercontent.com"
@@ -193,11 +196,6 @@ GOOGLE_REDIRECT_URI="http://localhost:3000/api/auth/google/callback"
 
 # Google OAuth Refresh Token (generated in Step 7)
 GOOGLE_REFRESH_TOKEN=""
-
-# YouTube Upload Settings
-YOUTUBE_PRIVACY_STATUS="unlisted"
-YOUTUBE_VIDEO_SIZE_MB=10
-```
 
 ---
 
