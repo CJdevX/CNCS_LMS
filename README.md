@@ -1,24 +1,71 @@
-# 🎓 CNCS LMS (Learning Management System)
+# 🎓 Learning Management System(LMS)
 
-A modern Learning Management System built with **Next.js**, **TypeScript**, **MySQL**, **Google Drive API**, and **YouTube Data API v3**. This platform allows seamless management of educational content, automated video processing/hosting on YouTube, and secure file storage via Google Drive.
+A modern, high-performance Learning Management System built with **Next.js 16 (App Router)**, **React 19**, **TypeScript**, **MongoDB**, **Google Drive API**, and **YouTube Data API v3**.
+
+This platform provides automated dual-cloud file routing: video lectures are hosted on YouTube as unlisted videos, while documents, presentations, spreadsheets, and course materials are stored securely in organized Google Drive subject folders. Centralized metadata, categories, and subject indexing are managed through MongoDB.
 
 ---
 
 ## 📋 Table of Contents
 
+- [Key Features](#-key-features)
+- [Architecture & Storage Routing](#-architecture--storage-routing)
 - [Prerequisites](#-prerequisites)
 - [Step-by-Step Installation & Setup](#-step-by-step-installation--setup)
   - [Step 1: Clone the Repository](#step-1-clone-the-repository)
   - [Step 2: Install Dependencies](#step-2-install-dependencies)
-  - [Step 3: Setup MySQL Database](#step-3-setup-mysql-database)
+  - [Step 3: Setup MongoDB Database](#step-3-setup-mongodb-database)
   - [Step 4: Create Gmail & YouTube Channel](#step-4-create-gmail--youtube-channel)
   - [Step 5: Setup Google Cloud Console Credentials](#step-5-setup-google-cloud-console-credentials)
   - [Step 6: Configure Environment Variables (`.env`)](#step-6-configure-environment-variables-env)
   - [Step 7: Generate Google OAuth Refresh Token](#step-7-generate-google-oauth-refresh-token)
   - [Step 8: Run the Development Server](#step-8-run-the-development-server)
 - [Available Scripts](#-available-scripts)
+- [API Endpoints](#-api-endpoints)
 - [Tech Stack](#-tech-stack)
 - [Troubleshooting & FAQs](#-troubleshooting--faqs)
+
+---
+
+## 🌟 Key Features
+
+- **Automated Storage Routing**: Automatically detects file type and routes videos to YouTube and all other materials to Google Drive.
+- **Structured Google Drive Storage**: Auto-creates nested folder structures per category (`Documents`, `Images`, `Assignments`, `Audio`, `Others`) and subject.
+- **YouTube Video Hosting**: Seamlessly uploads video content via YouTube Data API v3 with configurable privacy (`unlisted`, `public`, `private`).
+- **MongoDB Metadata Management**: Stores reference IDs, file sizes, uploader ownership, categories, and subjects with Mongoose schemas.
+- **Secure File Deletion**: File deletion cleans up both the cloud storage target (Google Drive or YouTube) and MongoDB record. Only the file uploader can delete their files.
+- **Real-time Search & Filter**: Filter course resources by subject, file type, category, or search by filename.
+- **OAuth CLI Setup Helper**: Interactive tool (`npm run get-token`) to obtain and save Google OAuth 2.0 refresh tokens automatically.
+
+---
+
+## 🏗️ Architecture & Storage Routing
+
+```text
+                       ┌──────────────────────┐
+                       │  User File Upload    │
+                       └──────────┬───────────┘
+                                  │
+                   Is file type a Video format?
+                  (.mp4, .mkv, .avi, .mov, etc.)
+                                 / \
+                                /   \
+                        YES   /       \   NO
+                            /           \
+                           ▼             ▼
+              ┌──────────────────┐  ┌──────────────────┐
+              │ YouTube Data API │  │ Google Drive API │
+              │ (Unlisted Video) │  │  (Folder Tree)   │
+              └────────┬─────────┘  └────────┬─────────┘
+                       │                     │
+                       └──────────┬──────────┘
+                                  │
+                                  ▼
+                     ┌──────────────────────────┐
+                     │     MongoDB Database     │
+                     │  (Metadata & Indexing)   │
+                     └──────────────────────────┘
+```
 
 ---
 
@@ -27,10 +74,10 @@ A modern Learning Management System built with **Next.js**, **TypeScript**, **My
 Before you begin, ensure you have the following installed and set up on your machine:
 
 1. **Node.js**: `v18.x` or higher (Download from [nodejs.org](https://nodejs.org/))
-2. **Package Manager**: `npm` (comes with Node.js), `yarn`, `pnpm`, or `bun`
-3. **MySQL Server**: Local installation (MySQL Workbench, XAMPP, or MariaDB) or a hosted cloud database
-4. **Google Account**: A active Gmail account
-5. **YouTube Channel**: A YouTube channel attached to your Google Account (required for video upload APIs)
+2. **Package Manager**: `npm` (comes with Node.js)
+3. **MongoDB**: Local MongoDB instance (e.g. MongoDB Community Server / Compass) or a [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) connection URI
+4. **Google Account**: An active Gmail account
+5. **YouTube Channel**: A YouTube channel associated with your Google Account (required for video upload APIs)
 
 ---
 
@@ -51,7 +98,7 @@ cd cncs_lms
 
 ### Step 2: Install Dependencies
 
-Run the package manager to install all required dependencies listed in `package.json`:
+Run `npm install` to install all required dependencies listed in `package.json`:
 
 ```bash
 npm install
@@ -59,59 +106,68 @@ npm install
 
 ---
 
-### Step 3: Setup MySQL Database
+### Step 3: Setup MongoDB Database
 
-1. Start your local **MySQL Server** (e.g., via XAMPP Control Panel or MySQL Service).
-2. Open your MySQL client (MySQL Workbench, phpMyAdmin, or terminal) and create a database:
+Create a MongoDB database for the LMS and copy the connection details into your environment file.
 
-```sql
-CREATE DATABASE cncs_lms;
+1. Create a MongoDB account and database.
+   - If you use MongoDB Atlas, create a cluster and a database (for example, `cncs_lms`).
+   - If you use a local MongoDB installation, make sure the server is running.
+2. Create a database user and allow access to your IP address if you are using Atlas.
+3. Copy your connection details:
+   - **MongoDB URI**: the full connection string for your database
+   - **Database name**: the name of the database you created
+4. Add them to your `.env` file using the variables below.
+
+Example:
+
+```env
+MONGODB_URI="mongodb://localhost:27017/cncs_lms"
+MONGODB_DBNAME="cncs_lms"
 ```
 
-3. Keep your database connection details handy (`host`, `user`, `password`, `database name`).
+> The application will automatically create the required collections (`users`, `subjects`, and `files`) when the APIs are first used.
 
 ---
 
-### Step 4: Create Gmail & YouTube Channel
+### Step 4: Create a Google Account and YouTube Channel
 
-1. **Create a Gmail Account**: If you don't have one, create a Google Account at [accounts.google.com](https://accounts.google.com).
-2. **Create a YouTube Channel** *(CRITICAL STEP)*:
+1. Use or create a Google account at [accounts.google.com](https://accounts.google.com).
+2. Create a YouTube channel linked to that Google account.
    - Go to [YouTube](https://www.youtube.com).
    - Sign in with your Google account.
-   - Click on your profile icon in the top right corner and click **Create a Channel**.
-   - Follow the prompt to complete setting up your channel.
-   > ⚠️ **Note**: YouTube Data API v3 **will fail with an error** when uploading videos if your Google account does not have a YouTube Channel created.
+   - Open your profile menu and choose **Create a channel**.
+   - Complete the setup prompt.
+
+> ⚠️ **Important**: YouTube uploads will fail with a `channelNotFound` error if the Google account does not have an associated YouTube channel.
 
 ---
 
 ### Step 5: Setup Google Cloud Console Credentials
 
-To enable Google Drive storage and YouTube video uploads, you need OAuth 2.0 credentials from Google Cloud Console:
+To enable Google Drive storage and YouTube uploads, configure Google Cloud Console and create OAuth credentials.
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Click on the project dropdown at the top and select **New Project**. Name it `CNCS LMS` and click **Create**.
-3. **Enable APIs**:
-   - In the left sidebar, navigate to **APIs & Services** > **Library**.
-   - Search for **Google Drive API**, click on it, and click **Enable**.
-   - Search for **YouTube Data API v3**, click on it, and click **Enable**.
-4. **Configure OAuth Consent Screen**:
-   - Go to **APIs & Services** > **OAuth consent screen**.
-   - Select User Type: **External**, then click **Create**.
-   - Fill in App Information (App name, User support email, Developer contact email).
-   - Click **Save and Continue** through Scopes.
-   - Under **Test users**, add your Gmail address (the one used for YouTube).
-   - Click **Save and Continue**.
-5. **Create OAuth 2.0 Client ID**:
-   - Go to **APIs & Services** > **Credentials**.
-   - Click **+ Create Credentials** > **OAuth client ID**.
-   - Select Application type: **Web application**.
-   - Set Name: `CNCS LMS Local`.
-   - Add **Authorized redirect URIs**:
-     ```text
-     http://localhost:3000/api/auth/google/callback
-     ```
-   - Click **Create**.
-   - Copy your **Client ID** and **Client Secret**.
+2. Create or select a project, then name it `CNCS LMS`.
+3. Enable the required APIs:
+   - **Google Drive API**
+   - **YouTube Data API v3**
+4. Open the **OAuth consent screen**:
+   - Choose **External** as the user type.
+   - Fill in the app name, support email, and developer contact details.
+   - Continue through the setup screens and add your Google email under **Test users**.
+5. Open **Credentials** and create a new credential:
+   - Choose **OAuth client ID**
+   - Select **Web application**
+   - Give it a name such as `CNCS LMS Local`
+   - Add the redirect URI:
+
+```text
+http://localhost:3000/api/auth/google/callback
+```
+
+6. Create the credentials and download the JSON file if available.
+7. Copy the **Client ID** and **Client Secret** into your `.env` file.
 
 ---
 
@@ -126,22 +182,20 @@ touch .env
 Paste the following variables into your `.env` file and replace the placeholder values with your actual credentials:
 
 ```env
-# MySQL Database Configuration
-DB_HOST="localhost"
-DB_USER="root"
-DB_PASSWORD="your_mysql_password"
-DB_NAME="cncs_lms"
+# MongoDB Configuration
+MONGODB_URI="mongodb://localhost:27017/cncs_lms"
+MONGODB_DBNAME="cncs_lms"
 
-# Google Cloud OAuth Credentials
+# Google OAuth Credentials
 GOOGLE_CLIENT_ID="your_google_client_id.apps.googleusercontent.com"
 GOOGLE_CLIENT_SECRET="your_google_client_secret"
 GOOGLE_REDIRECT_URI="http://localhost:3000/api/auth/google/callback"
 
-# Google OAuth Refresh Token (Generated in Step 7)
+# Google OAuth Refresh Token (generated in Step 7)
 GOOGLE_REFRESH_TOKEN=""
 
-# YouTube Configuration
-YOUTUBE_PRIVACY_STATUS="unlisted" # Options: public | private | unlisted
+# YouTube Upload Settings
+YOUTUBE_PRIVACY_STATUS="unlisted"
 YOUTUBE_VIDEO_SIZE_MB=10
 ```
 
@@ -149,7 +203,7 @@ YOUTUBE_VIDEO_SIZE_MB=10
 
 ### Step 7: Generate Google OAuth Refresh Token
 
-The project includes an automated script to retrieve and automatically save your Google OAuth Refresh Token to `.env`.
+The project includes an automated CLI helper to retrieve and automatically save your Google OAuth Refresh Token to `.env`.
 
 1. Run the token generation script:
 
@@ -158,8 +212,8 @@ npm run get-token
 ```
 
 2. Open the printed authorization URL in your web browser.
-3. Sign in with your Google account and click **Continue** / **Allow**.
-4. Upon granting permissions, Google will redirect to your callback URL, and the script (or Next.js server) will **automatically save `GOOGLE_REFRESH_TOKEN` into your `.env` file**!
+3. Sign in with your Google account and grant permissions.
+4. Upon authorization, Google will redirect to your callback URL (`http://localhost:3000/api/auth/google/callback`), and the script will **automatically save `GOOGLE_REFRESH_TOKEN` into your `.env` file**!
 
 ---
 
@@ -171,7 +225,7 @@ Now you are ready to start the application!
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser to view the application.
+Open [http://localhost:3000](http://localhost:3000) in your browser to access the CNCS LMS portal.
 
 ---
 
@@ -181,11 +235,24 @@ In the project directory, you can run:
 
 | Command | Description |
 | :--- | :--- |
-| `npm run dev` | Starts the development server at `http://localhost:3000` |
+| `npm run dev` | Starts the Next.js development server at `http://localhost:3000` |
 | `npm run build` | Builds the application for production |
 | `npm run start` | Starts the production server |
-| `npm run get-token` | Runs interactive OAuth CLI tool to fetch `GOOGLE_REFRESH_TOKEN` |
-| `npm run lint` | Runs ESLint to check for code style issues |
+| `npm run get-token` | Runs interactive OAuth CLI tool to fetch and save `GOOGLE_REFRESH_TOKEN` |
+| `npm run lint` | Runs ESLint to check for code quality and formatting issues |
+
+---
+
+## 📡 API Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/upload` | Uploads file (FormData: `file`, `subject`, `isAssignment`, `uploadedBy`). Routes video files to YouTube and other documents to Google Drive, saving metadata in MongoDB. |
+| `GET` | `/api/files` | Query uploaded files (`?category=`, `?type=`, `?subject=`, `?userEmail=`, `?search=`). |
+| `DELETE` | `/api/files?id=<ID>` | Authenticated deletion of a file. Deletes target from YouTube or Google Drive and removes MongoDB record. |
+| `GET` | `/api/subjects` | Fetches list of all active subjects stored in MongoDB. |
+| `POST` | `/api/auth/login` | Authenticates user credentials and sets `lms_session` cookie. |
+| `POST` | `/api/auth/register` | Registers a new user account. |
 
 ---
 
@@ -193,29 +260,30 @@ In the project directory, you can run:
 
 - **Framework**: [Next.js 16 (App Router)](https://nextjs.org/)
 - **Frontend**: [React 19](https://react.dev/), [Tailwind CSS 4](https://tailwindcss.com/)
-- **Database**: MySQL (`mysql2`)
+- **Database**: [MongoDB](https://www.mongodb.com/) via [Mongoose 9](https://mongoosejs.com/)
 - **APIs & Cloud Integrations**:
-  - Google Drive API (`googleapis`)
+  - Google Drive API v3 (`googleapis`)
   - YouTube Data API v3 (`googleapis`)
-  - File Uploads (`multer`)
-- **Language**: TypeScript
+  - File Streams (`multer`)
+- **Language**: TypeScript & Modern JavaScript (ES6+)
 
 ---
 
 ## ❓ Troubleshooting & FAQs
 
 ### 1. Error: `channelNotFound` or YouTube API Upload Failed
-- **Cause**: The Google account used to generate the refresh token does not have an active YouTube channel created.
-- **Solution**: Go to [YouTube](https://www.youtube.com), click your profile icon, click **Create a Channel**, complete the quick setup, and then re-run `npm run get-token`.
+- **Cause**: The Google account used to generate the refresh token does not have an active YouTube channel.
+- **Solution**: Go to [YouTube](https://www.youtube.com), click your profile icon, click **Create a Channel**, complete setup, and re-run `npm run get-token`.
 
-### 2. Error: `invalid_grant` or Refresh Token expired
-- **Cause**: Google OAuth refresh token was revoked or expired (happens if the OAuth Consent Screen status is set to "Testing" and 7 days pass).
-- **Solution**: Re-run `npm run get-token`, complete browser authorization, and update `GOOGLE_REFRESH_TOKEN` in `.env`.
+### 2. Error: `invalid_grant` or Refresh Token Expired
+- **Cause**: Google OAuth refresh token was revoked or expired (occurs if OAuth Consent Screen status is set to "Testing" and 7 days pass).
+- **Solution**: Re-run `npm run get-token`, complete browser authorization, and verify `GOOGLE_REFRESH_TOKEN` in `.env`.
 
-### 3. Database Connection Error (`ECONNREFUSED` / `ER_ACCESS_DENIED_ERROR`)
-- **Cause**: MySQL server is not running or credentials in `.env` are incorrect.
-- **Solution**: Ensure your MySQL service is started and verify `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in `.env`.
+### 3. Database Connection Error (`MongooseServerSelectionError`)
+- **Cause**: MongoDB server is not running or `MONGODB_URI` in `.env` is incorrect.
+- **Solution**: Verify MongoDB service is running locally (`mongod` / MongoDB Compass) or check network access settings in MongoDB Atlas.
 
 ---
 
 ✨ **Happy Coding!** If you encounter any issues, feel free to open an issue or reach out to the project maintainers.
+
