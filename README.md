@@ -122,8 +122,8 @@ Create a MongoDB database for the LMS and copy the connection details into your 
 Example:
 
 ```env
-MONGODB_URI="mongodb://localhost:27017/cncs_lms"
-MONGODB_DBNAME="cncs_lms"
+MONGODB_URI="Your MongoDB URI"
+MONGODB_DBNAME="Your MongoDB Database Name"
 ```
 
 > The application will automatically create the required collections (`users`, `subjects`, and `files`) when the APIs are first used.
@@ -161,14 +161,13 @@ To enable Google Drive storage and YouTube uploads, configure Google Cloud Conso
    - Select **Web application**
    - Give it a name such as `CNCS_LMS`
    - Add the Authorized JavaScript origins:
-```text
-http://localhost:3000
-```
+   ```text
+   http://localhost:3000
+   ```
    - Add the Authorized redirect URIs:
-
-```text
-http://localhost:3000/api/auth/google/callback
-```
+   ```text
+   http://localhost:3000/api/auth/google/callback
+   ```
 
 6. Create the credentials and download the JSON file if available.
 7. Copy the **Client ID** and **Client Secret** into your `.env` file.
@@ -184,7 +183,6 @@ Create a `.env` file Paste the following variables into your `.env` file and rep
 MONGODB_URI="Your MongoDB URI"
 MONGODB_DBNAME="Your MongoDB Database Name"
 
-```
 # YouTube Upload Settings
 YOUTUBE_PRIVACY_STATUS="unlisted"
 YOUTUBE_VIDEO_SIZE_MB=10
@@ -196,7 +194,7 @@ GOOGLE_REDIRECT_URI="http://localhost:3000/api/auth/google/callback"
 
 # Google OAuth Refresh Token (generated in Step 7)
 GOOGLE_REFRESH_TOKEN=""
-
+```
 ---
 
 ### Step 7: Generate Google OAuth Refresh Token
