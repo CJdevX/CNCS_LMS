@@ -183,10 +183,6 @@ Create a `.env` file Paste the following variables into your `.env` file and rep
 MONGODB_URI="Your MongoDB URI"
 MONGODB_DBNAME="Your MongoDB Database Name"
 
-# YouTube Upload Settings
-YOUTUBE_PRIVACY_STATUS="unlisted"
-YOUTUBE_VIDEO_SIZE_MB=10
-
 # Google OAuth Credentials
 GOOGLE_CLIENT_ID="your_google_client_id.apps.googleusercontent.com"
 GOOGLE_CLIENT_SECRET="your_google_client_secret"
@@ -194,6 +190,10 @@ GOOGLE_REDIRECT_URI="http://localhost:3000/api/auth/google/callback"
 
 # Google OAuth Refresh Token (generated in Step 7)
 GOOGLE_REFRESH_TOKEN=""
+
+# YouTube Upload Settings
+YOUTUBE_PRIVACY_STATUS="unlisted"
+YOUTUBE_VIDEO_SIZE_MB=10     # Adjest Size Limit
 ```
 ---
 
