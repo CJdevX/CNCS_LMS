@@ -97,7 +97,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
 
   function detectType(mimeType: string, filename: string, isAssignment: boolean): DetectedInfo {
     if (isAssignment) {
-      return { category: "Assignments", type: ".assignment", typeLabel: "Assignment File", pathParts: ["Assignments"] };
+      return { category: "Assignments", type: ".assignment", typeLabel: "Assignment", pathParts: ["Assignments"] };
     }
 
     const lowerName = (filename || "").toLowerCase();
@@ -109,7 +109,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
       mimeType.startsWith("video/") ||
       ["mp4", "mkv", "avi", "mov", "webm", "flv", "wmv", "m4v", "3gp", "ts"].includes(rawExt)
     ) {
-      return { category: "Videos", type: extLabel || ".mp4", typeLabel: "Video File", pathParts: ["YouTube"] };
+      return { category: "Videos", type: extLabel || ".mp4", typeLabel: "Video", pathParts: ["YouTube"] };
     }
 
     // 2. Images -> Google Drive
@@ -117,17 +117,17 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
       mimeType.startsWith("image/") ||
       ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp", "ico", "tiff", "heic"].includes(rawExt)
     ) {
-      return { category: "Images", type: extLabel || ".image", typeLabel: "Image File", pathParts: ["Images"] };
+      return { category: "Images", type: extLabel || ".image", typeLabel: "Image", pathParts: ["Images"] };
     }
 
     // 3. Documents - PDF
     if (mimeType === "application/pdf" || rawExt === "pdf") {
-      return { category: "Documents", type: extLabel || ".pdf", typeLabel: "PDF Document", pathParts: ["Documents", "PDF"] };
+      return { category: "Documents", type: extLabel || ".pdf", typeLabel: "Document", pathParts: ["Documents", "PDF"] };
     }
 
     // 4. Documents - Word
     if (mimeType.includes("word") || ["doc", "docx", "odt", "rtf"].includes(rawExt)) {
-      return { category: "Documents", type: extLabel || ".docx", typeLabel: "Word Document", pathParts: ["Documents", "Word"] };
+      return { category: "Documents", type: extLabel || ".docx", typeLabel: "Word", pathParts: ["Documents", "Word"] };
     }
 
     // 5. Documents - PowerPoint
@@ -136,7 +136,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
       mimeType.includes("presentation") ||
       ["ppt", "pptx", "odp"].includes(rawExt)
     ) {
-      return { category: "Documents", type: extLabel || ".pptx", typeLabel: "PowerPoint Presentation", pathParts: ["Documents", "PowerPoint"] };
+      return { category: "Documents", type: extLabel || ".pptx", typeLabel: "PowerPoint", pathParts: ["Documents", "PowerPoint"] };
     }
 
     // 6. Documents - Excel / Spreadsheets
@@ -145,12 +145,12 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
       mimeType.includes("spreadsheet") ||
       ["xls", "xlsx", "csv", "ods"].includes(rawExt)
     ) {
-      return { category: "Documents", type: extLabel || ".xlsx", typeLabel: "Excel Spreadsheet", pathParts: ["Documents", "Excel"] };
+      return { category: "Documents", type: extLabel || ".xlsx", typeLabel: "Excel", pathParts: ["Documents", "Excel"] };
     }
 
     // 7. Documents - JSON
     if (mimeType === "application/json" || rawExt === "json") {
-      return { category: "Documents", type: extLabel || ".json", typeLabel: "JSON File", pathParts: ["Documents", "JSON"] };
+      return { category: "Documents", type: extLabel || ".json", typeLabel: "JSON", pathParts: ["Documents", "JSON"] };
     }
 
     // 8. Documents - Text / Markdown
@@ -179,12 +179,12 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
       mimeType.includes("compressed") ||
       ["zip", "rar", "7z", "tar", "gz", "bz2"].includes(rawExt)
     ) {
-      return { category: "Others", type: extLabel || ".zip", typeLabel: "Archive File", pathParts: ["Others", "Archives"] };
+      return { category: "Others", type: extLabel || ".zip", typeLabel: "Archive", pathParts: ["Others", "Archives"] };
     }
 
     // 12. Dynamic Extension Fallback
     if (extLabel) {
-      return { category: "Others", type: extLabel, typeLabel: `${rawExt.toUpperCase()} File`, pathParts: ["Others", rawExt.toUpperCase()] };
+      return { category: "Others", type: extLabel, typeLabel: `${rawExt.toUpperCase()}`, pathParts: ["Others", rawExt.toUpperCase()] };
     }
 
     return { category: "Others", type: ".file", typeLabel: "File", pathParts: ["Others"] };
@@ -377,7 +377,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
                 gap: "10px",
               }}
             >
-              {/* Row 1: File Type & Target Storage */}
+              {/* File Type & Target Storage */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.83rem", fontWeight: "600", color: "var(--text-primary)" }}>
                   <span>Detected File Type:</span>
@@ -411,29 +411,7 @@ export default function UploadModal({ subjects, defaultUploaderEmail, onClose, o
                 </span>
               </div>
 
-              {/* Row 2: Saved Folder Name / Path */}
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.82rem", color: "var(--text-secondary)" }}>
-                <span style={{ fontWeight: "600", color: "var(--text-primary)", whiteSpace: "nowrap" }}>Saved Folder:</span>
-                <span
-                  style={{
-                    background: "rgba(0, 0, 0, 0.25)",
-                    border: "1px solid var(--border)",
-                    padding: "3px 10px",
-                    borderRadius: "6px",
-                    fontFamily: "monospace",
-                    fontSize: "0.8rem",
-                    color: storageType === "YOUTUBE" ? "#f87171" : "#818cf8",
-                    wordBreak: "break-all",
-                  }}
-                >
-                  📁 {storageType === "YOUTUBE"
-                    ? `YouTube / ${newSubject.trim() || subject.trim() || "[Subject Folder]"}`
-                    : `${(detected.pathParts || [detected.category]).join(" / ")} / ${newSubject.trim() || subject.trim() || "[Subject Folder]"}`
-                  }
-                </span>
-              </div>
-
-              {/* Row 3: Automatic Storage System Notice */}
+              {/* Automatic Storage System Notice */}
               <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontStyle: "italic", borderTop: "1px dashed rgba(255,255,255,0.1)", paddingTop: "6px" }}>
                 {storageType === "YOUTUBE"
                   ? "⚡ Auto-detected video file: Every video is automatically uploaded to YouTube."

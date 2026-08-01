@@ -1,8 +1,8 @@
 import drive, { resolveDrivePath, resolveFileCategory } from "@/services/drive.service";
 import { uploadVideo } from "@/services/youtube.service";
 import dbConnect from "@/lib/database";
-import Subject from "@/lib/models/Subject";
-import File from "@/lib/models/File";
+import Subject from "@/models/Subject";
+import File from "@/models/File";
 import { NextResponse } from "next/server";
 import { Readable } from "stream";
 
@@ -38,7 +38,7 @@ export async function POST(request) {
     const subjectDoc = await Subject.findOneAndUpdate(
       { name: subject.trim() },
       { $setOnInsert: { name: subject.trim() } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: "after" }
     );
 
     let fileRecordId = null;

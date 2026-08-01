@@ -1,6 +1,6 @@
 import dbConnect from "@/lib/database";
-import File from "@/lib/models/File";
-import Subject from "@/lib/models/Subject";
+import File from "@/models/File";
+import Subject from "@/models/Subject";
 import drive from "@/services/drive.service";
 import { deleteVideo } from "@/services/youtube.service";
 import { NextResponse } from "next/server";

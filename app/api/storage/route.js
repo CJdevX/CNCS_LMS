@@ -1,6 +1,6 @@
 import dbConnect from "@/lib/database";
-import File from "@/lib/models/File";
-import User from "@/lib/models/User";
+import File from "@/models/File";
+import User from "@/models/User";
 import { getDriveStorageQuota } from "@/services/drive.service";
 import { NextResponse } from "next/server";
 

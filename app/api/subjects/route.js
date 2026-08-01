@@ -1,5 +1,5 @@
 import dbConnect from "@/lib/database";
-import Subject from "@/lib/models/Subject";
+import Subject from "@/models/Subject";
 import { NextResponse } from "next/server";
 
 const DEFAULT_SUBJECTS = [
@@ -56,7 +56,7 @@ export async function POST(request) {
     const subject = await Subject.findOneAndUpdate(
       { name },
       { $setOnInsert: { name } },
-      { upsert: true, new: true, lean: true }
+      { upsert: true, returnDocument: "after", lean: true }
     );
 
     return NextResponse.json({
